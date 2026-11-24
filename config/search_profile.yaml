@@ -1,0 +1,42 @@
+# Targeting for routing and scoring. Edit freely.
+
+titles:
+  - AI Project Manager
+  - AI Implementation Specialist
+  - AI Automation Specialist
+  - Workflow Automation Specialist
+  - Automation Project Manager
+  - Technical Project Manager
+  - Implementation Manager
+  - Implementation Project Manager
+  - AI Operations Specialist
+  - Program Coordinator (AI or automation)
+  - Project Coordinator (automation or technical)
+  - Revenue Operations (automation focus)
+  - Marketing Operations (automation focus)
+
+priority_keywords: [AI, automation, agents, Claude, n8n, Make, Zapier, workflow,
+  integrations, APIs, HubSpot, client onboarding, implementation]
+
+seniority:
+  include: [mid, senior]
+  exclude: [intern, internship, entry-level, junior-graduate, director, head of, vp, vice president, chief]
+
+exclude_functions:
+  - pure software engineering
+  - data science or ML engineering
+  - sales, SDR or BDR quota roles
+  - call centre or customer support
+  - roles requiring a licence Carol does not hold
+
+hours:
+  accept: [full-time, part-time]
+  us_hours_ok: true            # shown in the digest when required
+  part_time_bonus: 5           # priority points for part-time or flexible roles
+
+pay:
+  floor_usd_month_part_time: 1300
+  floor_usd_month_full_time: null   # TO CONFIRM with Carol
+  hours_per_month_part_time: 80     # used only when the posting states no hours
+  hours_per_month_full_time: 160
+  review_band_pct: 10               # converted pay up to 10% below floor -> REVIEW, not SKIP

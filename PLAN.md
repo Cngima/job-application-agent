@@ -1,0 +1,212 @@
+# job-application-agent: Build Plan
+
+A personal job-search agent that finds, routes, scores, drafts and tracks remote job applications.
+It never submits an application, never emails an employer and never signs in to a job site.
+Carol reviews and submits everything.
+
+Status key: `[ ]` not started, `[~]` in progress, `[x]` done and verified on real data.
+
+---
+
+## Ground rules (apply to every stage)
+
+1. **No submitting.** No code path may submit a form, send mail to anyone other than the configured owner address, or authenticate to a job site. A test asserts that the digest sender refuses any recipient other than `OWNER_EMAIL`. (Reddit OAuth is the one login, and it is to Reddit's official Data API for reading, never to a job site.)
+2. **Grounding.** Every generated CV, letter, answer or fit report passes `grounding.validate()` before it is saved. It rejects any tool, employer, title, number or credential that is not in the evidence bank, and anything on `never_claim`.
+3. **Gaps stay gaps.** Fit reports list GAP requirements explicitly. Drafts never paper over them.
+4. **Eligibility comes from the employer.** A job is eligible only if the employer's own posting names Kenya, lists Kenya, or says Africa-wide or worldwide with no exclusion. The exact quoted location text is always stored. Aggregator location labels are never trusted.
+5. **Polite sourcing.** Official APIs, public ATS endpoints and public RSS only. robots.txt checked per host, each site's terms respected, per-host rate limit (default 1 request every 2 s), a `User-Agent` that names the project and repo URL. Never bypass bot protection or logins. Not used: LinkedIn, Indeed, We Work Remotely, X/Twitter automation.
+6. **Privacy.** `.env` and `data/private/` are gitignored. The public repo ships `data/sample/` with a fictional person. CI fails if any file under `data/private/` is tracked. Before every push, `git status` is checked to confirm no private file is staged.
+7. **No em dashes** in generated text or docs. The grounding validator and a lint test enforce it.
+
+## Git and release workflow
+
+- Author: `Carol Njogu <86587680+Cngima@users.noreply.github.com>` (set in the repo's local git config).
+- Commit after each stage, push to `github.com/Cngima/job-application-agent` once that stage's tests and lint pass.
+- Before the first push: `git status` and `git check-ignore` confirm `.env` and `data/private/` are ignored and not staged.
+
+## Configuration files
+
+| File | Holds | Tracked in git |
+|---|---|---|
+| `config.yaml` | System settings: AI provider, call caps, HTTP politeness, embedding model, paths | Yes |
+| `config/search_profile.yaml` | Targeting: titles, priority keywords, seniority, exclusions, hours, pay floors, hourly conversion | Yes (Carol's real targets, nothing sensitive) |
+| `config/sources.yaml` | Companies, boards, agencies, subreddits to watch | Yes |
+| `.env` | API keys, SMTP, Reddit OAuth, API token | No |
+| `data/private/evidence_bank.yaml` | Carol's facts, allowed tools, never_claim, personal preferences | No |
+
+### search_profile.yaml (seeded from Carol's brief)
+- **Titles:** AI Project Manager, AI Implementation Specialist, AI Automation Specialist, Workflow Automation Specialist, Automation Project Manager, Technical Project Manager, Implementation Manager, Implementation Project Manager, AI Operations Specialist, Program Coordinator (AI or automation), Project Coordinator (automation or technical), Revenue/Marketing Operations (automation focus).
+- **Priority keywords:** AI, automation, agents, Claude, n8n, Make, Zapier, workflow, integrations, APIs, HubSpot, client onboarding, implementation.
+- **Seniority:** mid-level and senior. Skip internships, entry-level, director and above.
+- **Exclude:** pure software engineering, data science or ML engineering, sales/SDR/BDR quota roles, call centre or customer support, roles requiring a licence Carol does not hold.
+- **Hours:** full-time or part-time. US working hours acceptable but always shown in the digest. Part-time and flexible roles get a small score bonus.
+- **Pay floors:** US$1,300/month part-time. Full-time floor: **to confirm with Carol**.
+- **Hourly conversion:** use the posting's stated hours when given, otherwise 80 hours/month part-time and 160 full-time. A converted figure is an estimate, so anything up to 10% below the floor routes to REVIEW, not SKIP.
+
+## Environment findings (2026-11-24)
+
+| Item | Finding | Impact |
+|---|---|---|
+| Python | 3.14.4 installed (no 3.11) | Target `>=3.11`; CI tests 3.11 and 3.12 |
+| Claude Code CLI | 2.1.331 present | Default provider works with no key |
+| Ollama | Not installed | Fallback provider coded and tested with mocks; Carol installs Ollama to use it for real |
+| `gh` CLI | Not installed | Push over HTTPS with git only |
+| CVs | 39 files match `Carol Njogu_CV_*.docx`, consistent layout | Stage 1 parser is rule-based (no AI) |
+| Job Hunt Log | 34 rows, most links are aggregator pages, posting text not stored | Eval set needs employer postings and top-ups (see Stage 3b) |
+
+## Tech choices
+
+| Concern | Choice | Why |
+|---|---|---|
+| Package | `src/jobagent/`, CLI via `typer`, entry point `jobagent` | Standard layout, testable |
+| Models | `pydantic` v2 | Validated AI JSON, config, Job model |
+| HTTP | `httpx` + `tenacity` (retry with backoff) | Timeouts, retries, easy mocking with `respx` |
+| DB | `sqlite3` with numbered SQL migrations | No ORM to explain, migrations are plain SQL |
+| Embeddings | `fastembed` with `BAAI/bge-small-en-v1.5`, float32 BLOBs in SQLite, cosine in numpy | Free, local, no vector DB needed |
+| AI | `ai/provider.py` interface: `claude_code`, `ollama`, `anthropic_api`, `fake` | One switch in `config.yaml` |
+| Dashboard | Streamlit, root `streamlit_app.py`, new SQLite connection per session | Same pattern as automation-metrics-dashboard |
+| MCP | Official `mcp` Python SDK (FastMCP) | Claude Desktop integration |
+| API for n8n | FastAPI on localhost, token in `.env` | Small surface for the n8n trigger |
+| Quality | `pytest`, `respx`, `ruff`, GitHub Actions | Required quality bar |
+
+---
+
+## Milestones
+
+### Stage 0: Scaffold `[x]`
+Repo layout, `pyproject.toml`, `.gitignore`, `config.yaml`, `.env.example`, logging, ruff and pytest config, CI workflow with a private-data guard.
+**How to test:** `pip install -e .[dev]`, then `jobagent --help`, `ruff check .`, `pytest`.
+**Result:** 3 tests pass, ruff clean.
+
+### Stage 1: Evidence bank `[~]`
+- `jobagent evidence build --cv-dir "<Clients CV>"` parses every `Carol Njogu_CV_*.docx`, splits each into facts (one bullet = one fact), attaches role, employer, dates and source files, extracts tools against a known-tools vocabulary and metrics by regex.
+- The same fact phrased slightly differently across CVs is merged and keeps a list of all source files.
+- Writes `data/private/evidence_bank.yaml`: `facts`, `allowed_tools` (only tools found in the CVs), `credentials`, `never_claim` (seeded: ERP, Codex, ClickUp as deep configuration, CAT tools, DNS, procurement-to-pay, RICE, Kano and similar product frameworks), `preferences` (remote only, part-time OK, timezone UTC+3, based in Kenya). Targeting lives in `search_profile.yaml`, not here.
+- Writes `data/sample/evidence_bank.yaml` for a fictional person with invented employers.
+- `jobagent evidence check` validates a bank against the pydantic schema.
+
+**How to test:** run the build, spot-check 10 facts against their source CV, confirm every `allowed_tools` entry appears in a CV. **Carol reviews and corrects the YAML before any later stage uses it.**
+
+### Stage 2: Sourcing `[ ]`
+Shared `Source` interface `fetch() -> list[Job]`. Every Job records `source`, `source_kind` (`employer_ats`, `discovery`, `agency`, `community`, `manual`) and the URL of the employer's own posting when known.
+
+| Adapter | Endpoint | Kind | Notes |
+|---|---|---|---|
+| Greenhouse | `boards-api.greenhouse.io/v1/boards/<token>/jobs?content=true` | employer_ats | |
+| Lever | `api.lever.co/v0/postings/<company>?mode=json` | employer_ats | |
+| Ashby | `api.ashbyhq.com/posting-api/job-board/<slug>` | employer_ats | |
+| Workable | `apply.workable.com/api/v1/widget/accounts/<slug>` | employer_ats | |
+| BreezyHR | `<company>.breezy.hr/json` | agency / employer_ats | Seed: Bruntwork, Pavago and Log agencies, where they use Breezy |
+| Zoho Recruit | Public careers-site feed, if one exists without login | agency | Verify in Stage 2; skip and document if none |
+| Remotive | Public API | discovery | Follow its rate guidance and attribution terms |
+| RemoteOK | Public API | discovery | Attribution and link-back required by its terms |
+| Himalayas | Public API | discovery | Discovery only |
+| Jobicy | Public API | discovery | Discovery only |
+| Reddit | Official Data API, OAuth "script" app, creds in `.env` | community | r/forhire, r/RemoteJobs, r/hiring, r/WorkOnline, `[Hiring]` posts only |
+| Manual | `jobagent add <url or pasted text>` | manual | For X, WhatsApp, LinkedIn, hiring.cafe and anything else |
+
+- **Discovery sources** (Remotive, RemoteOK, Himalayas, Jobicy): their location labels are ignored. The agent resolves the employer's own posting (by following the apply link to a Greenhouse, Lever, Ashby, Workable or Breezy page when it is one) and reads eligibility from that text. If no employer posting can be read, the job routes to CHECK_ELIGIBILITY.
+- **Reddit:** never routed to APPLY, only REVIEW or CHECK_ELIGIBILITY. Posts that ask for payment, or that move the conversation to Telegram or WhatsApp, are flagged `scam_risk`. If Reddit credentials are missing or the API refuses access, the source is skipped and logged and the run continues.
+- **Kenyan boards** (BrighterMonday, MyJobMag, Fuzu): included only if each offers a public RSS feed or API and its robots.txt and terms allow automated access. Checked in Stage 2. Otherwise listed in the README as not supported.
+- **hiring.cafe:** no automated access. README explains the manual workflow: discover companies there, then add their ATS boards to `sources.yaml`.
+- **Manual intake:** `jobagent add` accepts a URL or pasted text. If the URL is a supported ATS page it is fetched through the polite client. Otherwise the pasted text is used as is. Same routing, fit scoring and tracking, with `source = manual`.
+- Normalise to one `Job` model, de-duplicate by canonical URL and by normalised `title + company`, skip anything already stored.
+- `PoliteClient`: robots.txt cache, per-host rate limit, identifying User-Agent, retry with backoff.
+- Seed `sources.yaml` from the Job Hunt Log. Companies with no permitted feed (for example Safaricom on Oracle, Talent Hackers on ApplyToJob) are listed as `manual_watch` with a note.
+
+**How to test:** unit tests with recorded JSON fixtures per adapter, including Reddit scam flags. Live: `jobagent source --dry-run` prints counts per source and sample titles and writes nothing.
+
+### Stage 3: Decision routing `[ ]`
+- **3a Rules (free):**
+  - Location exclusion parser over the employer's own text only ("US only", "EMEA excluding Africa", "LATAM only" and similar). Skip on clear exclusion of Kenya.
+  - Pay floor from `search_profile.yaml`: stated hours first, else 80 or 160 hours/month. Below floor by more than 10%: SKIP. Within 10% below: REVIEW. Range: compared on its top figure.
+  - Out-of-scope functions and seniority (exclusion list in `search_profile.yaml`).
+  - Postings older than 60 days flagged as likely evergreen.
+  - Source caps: Reddit at most REVIEW. Discovery sources with no employer text at most CHECK_ELIGIBILITY.
+- **3b AI** for jobs that pass: batched (default 5 per call), returns per job `route`, `eligibility_verdict` (KENYA_CONFIRMED / AFRICA_OR_WORLDWIDE_NO_EXCLUSION / UNCLEAR / EXCLUDED), `quoted_location_text`, `function_match`, `seniority_match`, `hours_requirement` (including whether US hours are required), `reasons`. Pydantic-validated, one retry, then REVIEW.
+- `quoted_location_text` must be a literal substring of the employer's text. If it is not, the verdict drops to UNCLEAR.
+- Priority score: title match, priority keyword hits, small bonus for part-time or flexible hours.
+- Every decision stored with rule hits, AI output, provider and prompt version.
+
+**How to test:** rule tests on hand-written postings including hourly edge cases. `jobagent route --limit 10` on real jobs, Carol reviews the decisions table.
+
+### AI provider layer (built with Stage 3) `[ ]`
+- `complete(prompt, json_schema) -> dict` with validation.
+- `claude_code`: `claude -p --output-format json`, with a timeout. Usage-limit messages raise `ProviderPaused`; the run stops AI work, logs it and keeps rule-only results.
+- `ollama`: HTTP to `localhost:11434`, model from config (default `qwen2.5:7b`).
+- `anthropic_api`: off by default, key from `.env`, model from config.
+- `fake`: replays recorded responses keyed by prompt hash. Used in CI and the demo.
+- Every call logged to `ai_calls` (provider, model, latency, tokens if reported, cost only for API). `max_calls_per_run` default 60.
+
+**How to test:** mocked tests for each provider including timeout, non-zero exit and usage-limit cases. One real call through `jobagent ai ping`.
+
+### Stage 3b: Labelled eval set (moved here from Stage 11) `[ ]`
+- Start from the 34 Job Hunt Log rows. For each, find the employer's own posting and save its text to `data/private/evals/postings/` (live where still open, otherwise Carol pastes it or the row is dropped).
+- Top up to about 40 with postings sourced in Stage 2.
+- Propose a label (route, eligibility verdict, one-line reason, quoted location text) for every posting and **show every proposed label to Carol for confirmation**.
+- `jobagent eval --provider claude_code|ollama|fake` reports routing accuracy, eligibility accuracy, a confusion table and every disagreement. Results saved to `evals/results/` with the prompt version.
+- Tune routing rules and prompts against the confirmed labels. Re-run whenever a prompt changes.
+- The public repo ships a small sample eval set of fictional postings so CI can run evals with the fake provider.
+
+**How to test:** CI runs the sample evals on `fake`. Locally run on `claude_code` (and `ollama` once installed), paste scores into README.
+
+### Stage 4: Fit scoring with RAG `[ ]`
+- Embed evidence facts with fastembed, store in `fact_embeddings`.
+- Extract requirements from each APPLY/REVIEW job (batched).
+- For each requirement, retrieve top-k facts (default 4), send only those facts and the requirement to the AI, get `MET` (with fact ids), `PARTIAL` or `GAP`. Fact ids are checked to exist.
+- Fit report: score 0 to 100 (MET 1.0, PARTIAL 0.5, GAP 0; must-haves weighted double), matched requirements with evidence, gaps, recommended CV angle. Passes the grounding validator.
+- APPLY jobs at or above `shortlist_threshold` (default 70) become `shortlisted` applications.
+
+**How to test:** retrieval tests with the sample bank. Live on 5 real jobs; Carol judges whether the MET/GAP calls are honest.
+
+### Stage 5: Tailored drafts (on command only) `[ ]`
+- `jobagent draft <job_id>` only for jobs Carol approves.
+- Install `cv-builder-qa` from GitHub, read its JSON Schema, build `cv_spec.json` by selecting and ordering real facts (text from the evidence bank, no new claims).
+- Grounding validator, then `cvbuilder build`, `cvbuilder qa`, `cvbuilder ats`. Draft and `report.md` saved under `data/private/drafts/<job_id>/`.
+- `jobagent answer <job_id>` drafts grounded answers to pasted application questions.
+
+**How to test:** draft one real job, check the QA and ATS reports, confirm a deliberately ungrounded spec is rejected.
+
+### Stage 6: Tracking `[ ]`
+Tables: `sources`, `jobs`, `decisions`, `fit_reports`, `applications`, `events`, `agent_runs`, `ai_calls`, `fact_embeddings`, `schema_version`.
+CLI: `jobagent applied <job_id>`, `jobagent status <job_id> <status>`, `jobagent list`.
+Imports the existing Job Hunt Log so history is kept.
+Optional `jobagent gmail sync` (`gmail.readonly`): matches replies to applications and **proposes** status changes for Carol to confirm.
+
+**How to test:** migration tests on empty and existing DBs, CLI tests, Gmail matcher on fixture messages.
+
+### Stage 7: Daily run and digest `[ ]`
+- `jobagent run` does stages 2 to 4, writes an `agent_runs` row, prints an error summary. A failing source never fails the run.
+- Digest: top shortlisted jobs with score, route, quoted eligibility text, hours (US hours flagged), link, gaps. SMTP to `OWNER_EMAIL` only, or written to `data/private/digests/` if SMTP is not set.
+- `docs/SCHEDULING.md` for Windows Task Scheduler. `.github/workflows/demo.yml` runs the sample profile with the fake provider.
+
+**How to test:** one manual run on real data, check the digest, then one scheduled run.
+
+### Stage 8: Dashboard `[ ]`
+Funnel, routing breakdown, source performance (eligible jobs per source), response rate, run health, AI usage per run and month, estimated time saved (assumption documented, default 6 minutes manual review per screened job). Runs on sample data by default.
+
+**How to test:** `streamlit run streamlit_app.py` on sample and private DBs.
+
+### Stage 9: MCP server `[ ]`
+Read-only `search_jobs`, `get_job`, `get_fit_report`, `pipeline_summary`, one write tool `create_draft`. No submit or delete tools exist.
+
+**How to test:** in-process MCP client tests, then a live question from Claude Desktop.
+
+### Stage 10: n8n workflow `[ ]`
+FastAPI `POST /run` (token-protected, localhost) and `GET /digest`. `workflows/daily_digest.n8n.json` with schedule trigger, HTTP call and email node. Setup notes in `docs/N8N.md`.
+
+**How to test:** FastAPI TestClient tests, then import into n8n and run once.
+
+### Final: Documentation `[ ]`
+README (mermaid architecture, routing versus RAG, setup, sources supported and not supported with reasons, cost notes, limitations, latest eval scores), `docs/HOW_IT_WORKS.md` in plain English. Every README claim maps to a built and tested feature.
+
+---
+
+## Open questions for Carol
+
+1. **Full-time pay floor:** the brief left it blank. What is the US$/month floor for full-time roles?
+
+## Progress log
+
+- 2026-11-24: Plan written. Environment checked. Stage 0 scaffold done (3 tests pass, ruff clean).
+- 2026-11-24: Plan updated with Carol's answers: noreply commit email, push per stage, evals moved after Stage 3, hourly conversion with 10% REVIEW band, search profile, expanded sources (Himalayas, Jobicy, BreezyHR, Zoho Recruit, Reddit, manual intake), unsupported sources documented. Stage 1 started.

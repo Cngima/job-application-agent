@@ -1,0 +1,30 @@
+# Which profile to run against. "sample" is the fictional demo profile.
+profile: sample            # sample | private
+data_dir: data/sample      # data/private for Carol's real data
+
+ai:
+  provider: claude_code    # claude_code | ollama | anthropic_api | fake
+  max_calls_per_run: 60
+  batch_size: 5
+  timeout_seconds: 180
+  claude_code:
+    model: null            # null = CLI default
+  ollama:
+    host: http://localhost:11434
+    model: qwen2.5:7b
+  anthropic_api:
+    model: claude-sonnet-5-5
+
+routing:
+  evergreen_days: 60   # targeting and pay floors live in config/search_profile.yaml
+
+
+fit:
+  embedding_model: BAAI/bge-small-en-v1.5
+  top_k: 4
+  shortlist_threshold: 70
+
+http:
+  user_agent: "job-application-agent/0.1 (+https://github.com/Cngima/job-application-agent)"
+  min_seconds_between_requests: 2.0
+  timeout_seconds: 20
