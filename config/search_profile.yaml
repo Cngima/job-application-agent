@@ -36,7 +36,7 @@ hours:
 
 pay:
   floor_usd_month_part_time: 1300
-  floor_usd_month_full_time: null   # TO CONFIRM with Carol
+  floor_usd_month_full_time: 1800
   hours_per_month_part_time: 80     # used only when the posting states no hours
   hours_per_month_full_time: 160
   review_band_pct: 10               # converted pay up to 10% below floor -> REVIEW, not SKIP

@@ -1,0 +1,24 @@
+# Rules for tailored CV drafts (Stage 5). Content comes only from the evidence bank.
+
+contact:
+  location: Nairobi, Kenya
+  links: [linkedin, github]        # GitHub shown next to LinkedIn, both clickable
+
+projects_section:
+  heading: AI & AUTOMATION PROJECTS
+  position: after_experience
+  section_type: diamond            # cv-builder-qa: bold title line, then one description line
+  one_line_descriptions: true
+  clickable_links: true
+  pick: {default: [2, 3], ai_automation_roles: all}
+  skip_status: [pending]           # pending projects never appear
+  # Role functions that count as "AI automation roles" (use every ready project)
+  ai_automation_title_keywords: [AI, automation, agent, workflow]
+
+roles:
+  part_time_label: "(Part-time)"   # appended to roles with employment_type part_time
+  show_fact_dates: true            # e.g. Lynn Resumes AI work shown as 2026
+
+overlap:
+  # Reject a draft if a role bullet and a project line share this many consecutive words.
+  max_shared_ngram: 8

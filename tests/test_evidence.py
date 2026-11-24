@@ -270,3 +270,84 @@ def test_cli_build_applies_overrides_file(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert load_bank(out).fact("owner-years") is not None
     assert "Review decisions applied" in (tmp_path / "bank_review.md").read_text(encoding="utf-8")
+
+
+def test_overrides_add_role_projects_and_owner_tools(tmp_path: Path) -> None:
+    from jobagent.evidence.overrides import Overrides, apply_overrides
+
+    bank, _ = build_bank([_make_cv(tmp_path / "a.docx", ["Built Zapier workflows."])])
+    ov = Overrides.model_validate(
+        {
+            "contact": {"github": "https://github.com/example"},
+            "roles_add": [
+                {
+                    "role": {
+                        "key": "2021",
+                        "title": "Founder",
+                        "employer": "Side Biz",
+                        "start": "2021",
+                        "end": "present",
+                        "employment_type": "part_time",
+                        "tools": ["Streamlit"],
+                        "constraints": ["Mark as part-time."],
+                    },
+                    "facts": [
+                        {
+                            "id": "biz-1",
+                            "kind": "experience",
+                            "text": "Built a thing.",
+                            "date": "2026",
+                            "tools": ["Make"],
+                        }
+                    ],
+                }
+            ],
+            "ai_automation_projects": [
+                {
+                    "id": "p1",
+                    "name": "Thing",
+                    "link": "https://github.com/x/thing",
+                    "description": "Does one thing.",
+                    "tools": ["Python"],
+                },
+                {
+                    "id": "p2",
+                    "name": "Later",
+                    "link": "https://github.com/x/later",
+                    "status": "pending",
+                },
+            ],
+        }
+    )
+    out, changes = apply_overrides(bank, ov)
+
+    role = next(r for r in out.roles if r.employer == "Side Biz")
+    assert role.employment_type == "part_time" and role.constraints == ["Mark as part-time."]
+    fact = out.fact("biz-1")
+    assert (fact.role, fact.employer, fact.start, fact.date) == (
+        "Founder",
+        "Side Biz",
+        "2021",
+        "2026",
+    )
+    assert fact.sources == ["owner_review"]
+    assert {"Streamlit", "Make", "Python"} <= out.tool_names()  # owner-named tools allowed
+    assert [p.status for p in out.ai_automation_projects] == ["ready", "pending"]
+    assert out.contact.github == "https://github.com/example"
+    assert [r.start for r in out.roles] == sorted([r.start for r in out.roles], reverse=True)
+
+
+def test_duplicate_ids_across_projects_and_facts_rejected(tmp_path: Path) -> None:
+    from pydantic import ValidationError
+
+    from jobagent.evidence.overrides import Overrides, apply_overrides
+
+    bank, _ = build_bank([_make_cv(tmp_path / "a.docx", ["Built Zapier workflows."])])
+    ov = Overrides.model_validate(
+        {
+            "facts_add": [{"id": "dup", "kind": "profile", "text": "x"}],
+            "ai_automation_projects": [{"id": "dup", "name": "n", "link": "https://x"}],
+        }
+    )
+    with pytest.raises(ValidationError):
+        apply_overrides(bank, ov)

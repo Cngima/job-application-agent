@@ -24,6 +24,9 @@ class Fact(BaseModel):
     employer: str | None = None
     start: str | None = None  # "YYYY-MM"
     end: str | None = None  # "YYYY-MM" or "present"
+    # When this specific fact happened, if narrower than the role dates. Drafts must keep it,
+    # e.g. AI work at a business that started years earlier.
+    date: str | None = None
     tools: list[str] = Field(default_factory=list)
     metrics: list[str] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
@@ -45,7 +48,27 @@ class Role(BaseModel):
     end: str | None
     title_variants: list[TitleVariant] = Field(default_factory=list)
     employer_variants: list[str] = Field(default_factory=list)
+    employment_type: Literal["full_time", "part_time", "volunteer", "contract"] | None = None
+    employer_description: str | None = None
+    tools: list[str] = Field(default_factory=list)  # tools used in this role, when stated
+    # Rules every draft must follow for this role, e.g. "Mark as part-time".
+    constraints: list[str] = Field(default_factory=list)
     source_count: int = 0
+
+
+class AIProject(BaseModel):
+    """An entry for the AI & AUTOMATION PROJECTS section of a CV."""
+
+    id: str
+    name: str
+    link: str
+    description: str | None = None  # one line; None while the project is pending
+    year: str | None = None
+    status: Literal["ready", "pending"] = "ready"
+    include_rule: str | None = None  # condition before a pending project may be used
+    tools: list[str] = Field(default_factory=list)
+    metrics: list[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
 
 
 class Credential(BaseModel):
@@ -75,6 +98,7 @@ class Contact(BaseModel):
     email: str | None = None
     phone: str | None = None
     linkedin: str | None = None
+    github: str | None = None
     location: str | None = None
 
 
@@ -97,10 +121,15 @@ class EvidenceBank(BaseModel):
     credentials: list[Credential] = Field(default_factory=list)
     allowed_tools: list[AllowedTool] = Field(default_factory=list)
     never_claim: list[NeverClaim] = Field(default_factory=list)
+    ai_automation_projects: list[AIProject] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _unique_ids(self) -> EvidenceBank:
-        ids = [f.id for f in self.facts] + [c.id for c in self.credentials]
+        ids = (
+            [f.id for f in self.facts]
+            + [c.id for c in self.credentials]
+            + [p.id for p in self.ai_automation_projects]
+        )
         dupes = {i for i in ids if ids.count(i) > 1}
         if dupes:
             raise ValueError(f"duplicate ids in evidence bank: {sorted(dupes)}")

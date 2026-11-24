@@ -14,7 +14,15 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-from jobagent.evidence.models import Credential, EvidenceBank, Fact, TitleVariant
+from jobagent.evidence.models import (
+    AIProject,
+    AllowedTool,
+    Credential,
+    EvidenceBank,
+    Fact,
+    Role,
+    TitleVariant,
+)
 
 log = logging.getLogger(__name__)
 
@@ -30,14 +38,24 @@ class RoleOverride(BaseModel):
     employer_variants: list[str] | None = None
 
 
+class NewRole(BaseModel):
+    """A role supplied by the owner that does not appear in any CV."""
+
+    role: Role
+    facts: list[Fact] = Field(default_factory=list)
+
+
 class Overrides(BaseModel):
     reviewed_on: str | None = None
     roles: dict[str, RoleOverride] = Field(default_factory=dict)  # keyed by role start "YYYY-MM"
+    roles_add: list[NewRole] = Field(default_factory=list)
     years_of_experience: str | None = None  # e.g. "10+"
     credentials_keep: list[str] | None = None  # exact texts; others are dropped
+    tools_add: list[str] = Field(default_factory=list)
     tools_remove: list[str] = Field(default_factory=list)
     facts_remove: list[str] = Field(default_factory=list)
     facts_add: list[Fact] = Field(default_factory=list)
+    ai_automation_projects: list[AIProject] = Field(default_factory=list)
     contact: dict[str, str] = Field(default_factory=dict)
 
 
@@ -137,6 +155,49 @@ def apply_overrides(bank: EvidenceBank, ov: Overrides) -> tuple[EvidenceBank, li
         bank.facts.append(f)
     if ov.facts_add:
         changes.append(f"facts added: {[f.id for f in ov.facts_add]}")
+
+    for nr in ov.roles_add:
+        role = nr.role.model_copy(update={"source_count": nr.role.source_count or 1})
+        bank.roles.append(role)
+        for f in nr.facts:
+            bank.facts.append(
+                f.model_copy(
+                    update={
+                        "kind": f.kind or "experience",
+                        "role": f.role or role.title,
+                        "employer": f.employer or role.employer,
+                        "start": f.start or role.start,
+                        "end": f.end or role.end,
+                        "sources": f.sources or [OWNER],
+                        "source_count": f.source_count or 1,
+                    }
+                )
+            )
+        changes.append(f"role added: {role.title} | {role.employer} ({len(nr.facts)} facts)")
+    if ov.roles_add:
+        bank.roles.sort(key=lambda r: r.start or "", reverse=True)
+
+    if ov.ai_automation_projects:
+        bank.ai_automation_projects = list(ov.ai_automation_projects)
+        ready = sum(p.status == "ready" for p in ov.ai_automation_projects)
+        changes.append(
+            f"AI & automation projects: {ready} ready, "
+            f"{len(ov.ai_automation_projects) - ready} pending"
+        )
+
+    # Every tool named by the owner (explicitly, on a role, fact or project) becomes allowed.
+    owner_tools = set(ov.tools_add)
+    for nr in ov.roles_add:
+        owner_tools.update(nr.role.tools)
+        for f in nr.facts:
+            owner_tools.update(f.tools)
+    for p in ov.ai_automation_projects:
+        owner_tools.update(p.tools)
+    added = sorted(owner_tools - bank.tool_names())
+    for name in added:
+        bank.allowed_tools.append(AllowedTool(name=name, source_count=1, sources=[OWNER]))
+    if added:
+        changes.append(f"tools added by owner: {added}")
 
     if ov.contact:
         bank.contact = bank.contact.model_copy(update=ov.contact)

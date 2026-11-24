@@ -32,7 +32,9 @@ Status key: `[ ]` not started, `[~]` in progress, `[x]` done and verified on rea
 | `config/search_profile.yaml` | Targeting: titles, priority keywords, seniority, exclusions, hours, pay floors, hourly conversion | Yes (Carol's real targets, nothing sensitive) |
 | `config/sources.yaml` | Companies, boards, agencies, subreddits to watch | Yes |
 | `.env` | API keys, SMTP, Reddit OAuth, API token | No |
-| `data/private/evidence_bank.yaml` | Carol's facts, allowed tools, never_claim, personal preferences | No |
+| `data/private/evidence_bank.yaml` | Generated: Carol's facts, roles, allowed tools, never_claim, AI & automation projects | No |
+| `data/private/evidence_overrides.yaml` | Carol's review decisions and owner-supplied facts, applied on every build | No |
+| `config/drafting.yaml` | CV draft rules: contact links, projects section, part-time label, overlap limit | Yes |
 
 ### search_profile.yaml (seeded from Carol's brief)
 - **Titles:** AI Project Manager, AI Implementation Specialist, AI Automation Specialist, Workflow Automation Specialist, Automation Project Manager, Technical Project Manager, Implementation Manager, Implementation Project Manager, AI Operations Specialist, Program Coordinator (AI or automation), Project Coordinator (automation or technical), Revenue/Marketing Operations (automation focus).
@@ -40,7 +42,7 @@ Status key: `[ ]` not started, `[~]` in progress, `[x]` done and verified on rea
 - **Seniority:** mid-level and senior. Skip internships, entry-level, director and above.
 - **Exclude:** pure software engineering, data science or ML engineering, sales/SDR/BDR quota roles, call centre or customer support, roles requiring a licence Carol does not hold.
 - **Hours:** full-time or part-time. US working hours acceptable but always shown in the digest. Part-time and flexible roles get a small score bonus.
-- **Pay floors:** US$1,300/month part-time. Full-time floor: **to confirm with Carol**.
+- **Pay floors:** US$1,300/month part-time, US$1,800/month full-time.
 - **Hourly conversion:** use the posting's stated hours when given, otherwise 80 hours/month part-time and 160 full-time. A converted figure is an estimate, so anything up to 10% below the floor routes to REVIEW, not SKIP.
 
 ## Environment findings (2026-11-24)
@@ -95,7 +97,8 @@ Repo layout, `pyproject.toml`, `.gitignore`, `config.yaml`, `.env.example`, logg
 - `data/private/evidence_bank_review.md` lists what needs a human decision: retitled roles, years-of-experience conflicts, rarely-claimed tools, credential variants, and single-CV facts.
 - The build never overwrites a reviewed bank: a rebuild writes `evidence_bank.new.yaml` unless `--force` is given.
 - Tool matching is case-sensitive so "zoom in" or "word" never counts as a tool claim.
-- 19 Stage 1 tests (parser, builder with generated .docx files, never_claim patterns, overwrite protection, sample bank).
+- Second review (2026-11-24): Lynn Resumes added as a part-time role (Founder & Lead CV Writer, 2022 to present, 6 owner-supplied facts with their own dates so 2026 AI work is never backdated, plus drafting constraints). AI & AUTOMATION PROJECTS section added (3 ready, job-application-agent pending until built). GitHub added to contact. Location fixed to Nairobi, Kenya. Python and Streamlit added as owner-named tools.
+- 21 Stage 1 tests (parser, builder with generated .docx files, never_claim patterns, overwrite protection, sample bank).
 
 ### Stage 2: Sourcing `[ ]`
 Shared `Source` interface `fetch() -> list[Job]`. Every Job records `source`, `source_kind` (`employer_ats`, `discovery`, `agency`, `community`, `manual`) and the URL of the employer's own posting when known.
@@ -170,6 +173,15 @@ Shared `Source` interface `fetch() -> list[Job]`. Every Job records `source`, `s
 **How to test:** retrieval tests with the sample bank. Live on 5 real jobs; Carol judges whether the MET/GAP calls are honest.
 
 ### Stage 5: Tailored drafts (on command only) `[ ]`
+Draft rules from Carol (`config/drafting.yaml`):
+- Contact line: Nairobi, Kenya, with clickable LinkedIn and GitHub links.
+- "AI & AUTOMATION PROJECTS" section after Professional Experience, cv-builder-qa `diamond` type (bold title, one description line with a clickable link). Pick 2 or 3 most relevant projects per job, all of them for AI automation roles. Pending projects never appear.
+- Part-time roles labelled as part-time. Fact dates kept (Lynn Resumes AI work shown as 2026, never since 2022).
+- Overlap check: a draft is rejected if a role bullet and a project line share 8 or more consecutive words.
+- The job-application-agent project entry is added only after this repo is built, tested and pushed, describing only working stages.
+
+**Dependency found in cv-builder-qa (checked 2026-11-24):** its only hyperlink is the LinkedIn link in the contact line (hard-coded). There is no GitHub contact link and `diamond` items have no link field, so project links would be plain text. Clickable links need a small change in cv-builder-qa itself (a generic link field on contacts and diamond items). Decision needed from Carol before Stage 5.
+
 - `jobagent draft <job_id>` only for jobs Carol approves.
 - Install `cv-builder-qa` from GitHub, read its JSON Schema, build `cv_spec.json` by selecting and ordering real facts (text from the evidence bank, no new claims).
 - Grounding validator, then `cvbuilder build`, `cvbuilder qa`, `cvbuilder ats`. Draft and `report.md` saved under `data/private/drafts/<job_id>/`.
@@ -214,10 +226,9 @@ README (mermaid architecture, routing versus RAG, setup, sources supported and n
 
 ## Open questions for Carol
 
-1. **Full-time pay floor:** the brief left it blank. What is the US$/month floor for full-time roles?
-2. **Lynn Resumes:** mentioned inside CV facts but never listed as a role. Add it as a role (title, dates) or leave it out?
-3. **Location:** the CVs say "Nairobi, Kenya"; the brief says Nakuru. Which should drafts use?
-4. **Two titles not found in any CV:** "Lead Project Coordinator (Customer Success Operations Department)" (CVs say "Team Lead, Project Coordinator (...)") and "Supplier (Customer) Support Coordinator" / "Customer Support Coordinator" (CVs say "Supplier Support Coordinator"). Confirm both are intended.
+1. **cv-builder-qa links:** add generic hyperlink support to cv-builder-qa (separate repo) so GitHub and project links are clickable?
+2. **Overlap between Lynn Resumes bullets and project lines:** approve short role versions used when the matching project is in the same draft?
+3. **Two titles not found in any CV:** "Lead Project Coordinator (Customer Success Operations Department)" (CVs say "Team Lead, Project Coordinator (...)") and "Supplier (Customer) Support Coordinator" / "Customer Support Coordinator" (CVs say "Supplier Support Coordinator"). Confirm both are intended.
 
 ## Progress log
 
@@ -225,3 +236,4 @@ README (mermaid architecture, routing versus RAG, setup, sources supported and n
 - 2026-11-24: Plan updated with Carol's answers: noreply commit email, push per stage, evals moved after Stage 3, hourly conversion with 10% REVIEW band, search profile, expanded sources (Himalayas, Jobicy, BreezyHR, Zoho Recruit, Reddit, manual intake), unsupported sources documented. Stage 1 started.
 - 2026-11-24: Stage 1 evidence bank builder done and tested (20 tests). Real bank built from 39 CVs, awaiting Carol's review.
 - 2026-11-24: Carol's review applied through an overrides file. Stage 1 complete (22 tests).
+- 2026-11-24: Full-time floor US$1,800/month. Lynn Resumes role, AI & automation projects, GitHub contact and drafting rules added (24 tests).
