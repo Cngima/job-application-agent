@@ -1,0 +1,160 @@
+# Evidence bank for a FICTIONAL person, used for the public demo and tests.
+# Every name, employer and number here is invented.
+version: 1
+generated_from:
+- Amina_Wekesa_CV_sample.docx
+contact:
+  name: Amina Wekesa
+  email: amina.wekesa@example.com
+  location: Kisumu, Kenya
+preferences:
+  remote_only: true
+  part_time_ok: true
+  based_in: Kenya
+  timezone: Africa/Nairobi (UTC+3)
+  notes:
+  - Targeting (titles, pay floors, hours) lives in config/search_profile.yaml.
+roles:
+- key: 2023-03
+  title: Automation Project Manager
+  employer: Lakeside Logistics
+  start: 2023-03
+  end: present
+  source_count: 1
+- key: 2020-01
+  title: Operations Coordinator
+  employer: Sunbird Health Clinics
+  start: 2020-01
+  end: 2023-02
+  source_count: 1
+facts:
+- id: lakeside-a1b2c3
+  kind: experience
+  text: Led the rollout of Zapier workflows that moved order updates from email into Airtable,
+    cutting manual data entry by 12 hours per week.
+  role: Automation Project Manager
+  employer: Lakeside Logistics
+  start: 2023-03
+  end: present
+  tools: [Airtable, Zapier]
+  metrics: [12 hours]
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+- id: lakeside-d4e5f6
+  kind: experience
+  text: Ran weekly status meetings and a RAID log for a five-person integrations team working
+    across Kenya and the United Kingdom.
+  role: Automation Project Manager
+  employer: Lakeside Logistics
+  start: 2023-03
+  end: present
+  metrics: [five-person]
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+- id: lakeside-0a9b8c
+  kind: experience
+  text: Built a HubSpot onboarding pipeline for new shipping clients, with automated welcome
+    emails and task assignment.
+  role: Automation Project Manager
+  employer: Lakeside Logistics
+  start: 2023-03
+  end: present
+  tools: [HubSpot]
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+- id: lakeside-7d6e5f
+  kind: experience
+  text: Wrote prompt templates and a review checklist for ChatGPT-drafted customer replies,
+    adopted by 14 support agents.
+  role: Automation Project Manager
+  employer: Lakeside Logistics
+  start: 2023-03
+  end: present
+  tools: [ChatGPT]
+  metrics: [14 support]
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+- id: lakeside-3c2b1a
+  kind: experience
+  text: Documented every automation in Notion with an owner, trigger, failure alert and rollback
+    step.
+  role: Automation Project Manager
+  employer: Lakeside Logistics
+  start: 2023-03
+  end: present
+  tools: [Notion]
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+- id: sunbird-112233
+  kind: experience
+  text: Coordinated appointment scheduling across 6 clinics using Google Sheets and Google Forms.
+  role: Operations Coordinator
+  employer: Sunbird Health Clinics
+  start: 2020-01
+  end: 2023-02
+  tools: [Google Forms, Google Sheets]
+  metrics: [6 clinics]
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+- id: sunbird-445566
+  kind: experience
+  text: Tracked supplier deliveries in Trello and escalated late orders to the procurement lead.
+  role: Operations Coordinator
+  employer: Sunbird Health Clinics
+  start: 2020-01
+  end: 2023-02
+  tools: [Trello]
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+- id: sunbird-778899
+  kind: experience
+  text: Trained 20 front-desk staff on a new patient check-in process, with a one-page guide and
+    two live sessions.
+  role: Operations Coordinator
+  employer: Sunbird Health Clinics
+  start: 2020-01
+  end: 2023-02
+  metrics: [20 front-desk]
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+- id: prof-aa11bb
+  kind: profile
+  text: Automation project manager with 6 years in operations and workflow automation for
+    logistics and healthcare teams.
+  metrics: [6 years]
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+competencies:
+- Workflow Automation
+- Project Coordination
+- Process Documentation
+- Stakeholder Communication
+credentials:
+- id: credcer-c0ffee
+  kind: certification
+  text: Certified Associate in Project Management (CAPM), Project Management Institute
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+- id: crededu-beef01
+  kind: education
+  text: Bachelor of Business Administration, Example University, 2019
+  sources: [Amina_Wekesa_CV_sample.docx]
+  source_count: 1
+allowed_tools:
+- {name: Airtable, source_count: 1}
+- {name: ChatGPT, source_count: 1}
+- {name: Google Forms, source_count: 1}
+- {name: Google Sheets, source_count: 1}
+- {name: HubSpot, source_count: 1}
+- {name: Notion, source_count: 1}
+- {name: Trello, source_count: 1}
+- {name: Zapier, source_count: 1}
+never_claim:
+- claim: Software engineering
+  patterns: ['\bsoftware engineer', '\bwrote production code\b']
+- claim: Salesforce administration
+  patterns: ['\bSalesforce\b']
+  note: Never used Salesforce.
+- claim: PMP
+  patterns: ['\bPMP\b', 'Project Management Professional']
+  note: Holds CAPM only.
