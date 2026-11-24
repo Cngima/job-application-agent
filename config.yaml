@@ -24,6 +24,10 @@ fit:
   top_k: 4
   shortlist_threshold: 70
 
+sourcing:
+  max_detail_fetches_per_source: 60   # caps per-job requests on big boards
+  max_new_companies_per_run: 15       # resolver board lookups for unseen companies
+
 http:
   user_agent: "job-application-agent/0.1 (+https://github.com/Cngima/job-application-agent)"
   min_seconds_between_requests: 2.0

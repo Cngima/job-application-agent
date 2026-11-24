@@ -28,6 +28,11 @@ class FitConfig(BaseModel):
     shortlist_threshold: int = 70
 
 
+class SourcingConfig(BaseModel):
+    max_detail_fetches_per_source: int = 60
+    max_new_companies_per_run: int = 15
+
+
 class HttpConfig(BaseModel):
     user_agent: str
     min_seconds_between_requests: float = 2.0
@@ -40,7 +45,18 @@ class Config(BaseModel):
     ai: AIConfig = Field(default_factory=AIConfig)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
     fit: FitConfig = Field(default_factory=FitConfig)
+    sourcing: SourcingConfig = Field(default_factory=SourcingConfig)
     http: HttpConfig
+
+    def with_profile(self, profile: str | None) -> Config:
+        """Switch between the public sample data and Carol's private data."""
+        if not profile:
+            return self
+        return self.model_copy(update={"profile": profile, "data_dir": Path("data") / profile})
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "jobagent.db"
 
 
 def load_config(path: Path | str = "config.yaml") -> Config:

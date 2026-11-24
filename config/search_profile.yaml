@@ -40,3 +40,16 @@ pay:
   hours_per_month_part_time: 80     # used only when the posting states no hours
   hours_per_month_full_time: 160
   review_band_pct: 10               # converted pay up to 10% below floor -> REVIEW, not SKIP
+
+# Cheap title screen applied before fetching job details (Stage 2). Deliberately broad:
+# Stage 3 makes the real routing decision. Word-boundary, case-insensitive matches.
+title_prefilter:
+  include: [project, projects, program, programme, implementation, implementations,
+    automation, automations, workflow, workflows, AI, operations, ops, RevOps,
+    integration, integrations, onboarding, delivery, coordinator, PMO, process, enablement,
+    "no-code", "low-code", Zapier, n8n, HubSpot, CRM]
+  exclude: [engineer, engineers, developer, developers, scientist, intern, internship,
+    graduate, director, VP, "vice president", "head of", chief, "account executive",
+    SDR, BDR, "sales representative", "sales development", nurse, teacher, tutor,
+    accountant, designer, "call centre", "call center", "customer support",
+    "customer service", "support agent", "support specialist"]

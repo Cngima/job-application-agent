@@ -1,0 +1,99 @@
+# Sources the agent reads. Every entry was checked on 2026-11-24 against the live endpoint,
+# the board owner's name and the host's robots.txt.
+#
+# kind: employer_ats (employer's own board), agency (staffing agency board),
+#       discovery (aggregator: leads only, eligibility proven from the employer's posting),
+#       community (Reddit: never routed to APPLY)
+#
+# To add a company you found on hiring.cafe or elsewhere, find its careers page, note the
+# ATS in the URL (boards.greenhouse.io/<slug>, jobs.lever.co/<slug>, jobs.ashbyhq.com/<slug>,
+# apply.workable.com/<slug>, <slug>.breezy.hr, <slug>.zohorecruit.com) and add an entry.
+
+sources:
+  # ---------------- employers from the Job Hunt Log
+  - {name: GitLab, adapter: greenhouse, slug: gitlab, kind: employer_ats}
+  - {name: pawaPay, adapter: greenhouse, slug: pawapay, kind: employer_ats}
+  - {name: Invisible Technologies, adapter: greenhouse, slug: invisibletech, kind: employer_ats,
+     notes: "Board 'invisible' is a general-interest form board; 'invisibletech' lists real roles."}
+  - {name: AJAIA, adapter: workable, slug: ajaia, kind: employer_ats}
+  - {name: 360dialog, adapter: breezy, slug: 360dialog, kind: employer_ats,
+     notes: "Moved from Workable (empty since) to Breezy."}
+  - {name: Social Discovery Group, adapter: breezy, slug: social-discovery-ventures, kind: employer_ats}
+
+  # ---------------- staffing agencies from the Job Hunt Log
+  - {name: Bruntwork, adapter: zoho, slug: bruntwork, kind: agency}
+  - {name: Pavago, adapter: workable, slug: pavago, kind: agency,
+     notes: "About 2,600 postings: details are fetched only for titles that pass the prefilter."}
+  - {name: Scale Army, adapter: ashby, slug: Scale Army Careers, kind: agency}
+  - {name: Hire Hangar, adapter: ashby, slug: hirehangar, kind: agency}
+
+  # ---------------- discovery (eligibility must come from the employer's own posting)
+  - name: RemoteOK
+    adapter: remoteok
+    kind: discovery
+    notes: "Terms: link back to the Remote OK URL and name Remote OK as the source."
+  - name: Himalayas
+    adapter: himalayas
+    kind: discovery
+    params:
+      country: KE          # Himalayas' own filter; its labels are never trusted for eligibility
+      max_pages: 1
+      queries: [AI project manager, AI implementation, automation specialist,
+                workflow automation, technical project manager, implementation manager,
+                project coordinator, AI operations, revenue operations, marketing operations]
+  - name: Jobicy
+    adapter: jobicy
+    kind: discovery
+    notes: "Public API, last 7 days, 1 request per second per IP. Terms: credit Jobicy and link."
+    params:
+      count: 50
+      tags: [project manager, automation, implementation, AI, operations]
+  - name: MyJobMag Kenya
+    adapter: myjobmag
+    kind: discovery
+    notes: "Public RSS feed listed at myjobmag.co.ke/feeds. Mostly on-site Kenyan roles."
+    params: {feed: "https://www.myjobmag.co.ke/jobsxml.xml"}
+
+  # ---------------- community
+  - name: Reddit
+    adapter: reddit
+    kind: community
+    enabled: false
+    notes: >-
+      Disabled pending Carol's decision: robots.txt on oauth.reddit.com and www.reddit.com
+      disallows all user agents. Also needs a Reddit 'script' app (REDDIT_CLIENT_ID,
+      REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD in .env).
+    params:
+      subreddits: [forhire, RemoteJobs, hiring, WorkOnline]
+
+# Companies and agencies from the Job Hunt Log with no public board the agent may read.
+# Check these by hand, or add them above if they move to a supported ATS.
+manual_watch:
+  - {name: Remote, url: "https://remote.com/careers", why: "Greenhouse board 'remotecom' exists but was empty on 2026-11-24; 'remote' belongs to General Assembly."}
+  - {name: Talent Inc., why: "Workable board exists but is empty; jobs were found via Himalayas."}
+  - {name: Talent Hackers, url: "https://talenthackers.applytojob.com", why: "JazzHR (ApplyToJob) has no public API without a key."}
+  - {name: Pulitzer Center, why: "Hires through Rippling; no public jobs API."}
+  - {name: Insight Enterprises, why: "SuccessFactors careers site; no public API. Greenhouse 'insight' is a different company."}
+  - {name: Safaricom, url: "https://egjd.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX", why: "Oracle Recruiting Cloud; no permitted public API."}
+  - {name: Shuru, why: "No public ATS board found."}
+  - {name: Spiralyze, why: "No public ATS board found."}
+  - {name: Support Tech, why: "No public ATS board found."}
+  - {name: SmartPA, why: "No public ATS board found."}
+  - {name: Immense Group, why: "No public ATS board found."}
+  - {name: Addepto, why: "No public ATS board found."}
+  - {name: Koast.ai, why: "No public ATS board found."}
+  - {name: Persona Talent, why: "No public ATS board found (Zoho portal does not exist)."}
+  - {name: Somewhere, why: "No public ATS board found (Zoho portal does not exist)."}
+  - {name: Meridial, why: "Told Carol on 28 Sep that Kenya is not supported yet."}
+  - {name: IAPS, why: "Fellowships posted on iaps.ai; no ATS feed."}
+
+# Sources considered and deliberately not used (also listed in the README).
+not_supported:
+  - {name: Remotive, reason: "robots.txt disallows /api/* for all user agents."}
+  - {name: BrighterMonday, reason: "No public RSS feed or API; robots.txt disallows /api/."}
+  - {name: Fuzu, reason: "Returns 403 to automated clients (bot protection); never bypassed."}
+  - {name: We Work Remotely, reason: "API terms do not allow job search tools."}
+  - {name: LinkedIn, reason: "No scraping. Use jobagent add with pasted text."}
+  - {name: Indeed, reason: "No scraping. Use jobagent add with pasted text."}
+  - {name: X (Twitter), reason: "API is paid. Use jobagent add with pasted text."}
+  - {name: hiring.cafe, reason: "No automated access. Use it by hand to discover companies, then add their ATS boards here."}

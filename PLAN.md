@@ -100,7 +100,7 @@ Repo layout, `pyproject.toml`, `.gitignore`, `config.yaml`, `.env.example`, logg
 - Second review (2026-11-24): Lynn Resumes added as a part-time role (Founder & Lead CV Writer, 2022 to present, 6 owner-supplied facts with their own dates so 2026 AI work is never backdated, plus drafting constraints). AI & AUTOMATION PROJECTS section added (3 ready, job-application-agent pending until built). GitHub added to contact. Location fixed to Nairobi, Kenya. Python and Streamlit added as owner-named tools.
 - 21 Stage 1 tests (parser, builder with generated .docx files, never_claim patterns, overwrite protection, sample bank).
 
-### Stage 2: Sourcing `[ ]`
+### Stage 2: Sourcing `[x]`
 Shared `Source` interface `fetch() -> list[Job]`. Every Job records `source`, `source_kind` (`employer_ats`, `discovery`, `agency`, `community`, `manual`) and the URL of the employer's own posting when known.
 
 | Adapter | Endpoint | Kind | Notes |
@@ -128,6 +128,20 @@ Shared `Source` interface `fetch() -> list[Job]`. Every Job records `source`, `s
 - Seed `sources.yaml` from the Job Hunt Log. Companies with no permitted feed (for example Safaricom on Oracle, Talent Hackers on ApplyToJob) are listed as `manual_watch` with a note.
 
 **How to test:** unit tests with recorded JSON fixtures per adapter, including Reddit scam flags. Live: `jobagent source --dry-run` prints counts per source and sample titles and writes nothing.
+
+**Result (2026-11-24):** done, run twice on real data.
+- Every source was checked live before coding: board owner name, response shape, robots.txt and terms. Findings are recorded in `config/sources.yaml`.
+- Enabled: GitLab, pawaPay, Invisible Technologies (Greenhouse); AJAIA, Pavago (Workable); 360dialog, Social Discovery Group (Breezy); Bruntwork (Zoho Recruit); Scale Army, Hire Hangar (Ashby); RemoteOK, Himalayas (`country=KE` search), Jobicy, MyJobMag Kenya RSS.
+- Not supported, with reasons: Remotive (robots.txt disallows `/api/*`), BrighterMonday (no feed, `/api/` disallowed), Fuzu (403 bot protection, never bypassed), We Work Remotely, LinkedIn, Indeed, X, hiring.cafe. Lever adapter is built and tested but no Job Hunt Log company uses Lever.
+- 16 companies with no readable board are on a `manual_watch` list (Talent Hackers on JazzHR, Safaricom on Oracle, Pulitzer Center on Rippling, Remote.com whose Greenhouse board is empty, and others).
+- Board-name checks matter: Greenhouse `remote` is General Assembly, Greenhouse `insight` is not Insight Enterprises. The resolver rejects such collisions (tested).
+- First real run: 194 new jobs from 15 sources in 5m14s, 0 errors. Second run: 60 new (Pavago backlog), 3m30s; stored postings cost no detail requests.
+- Database after two runs: 254 jobs, 159 with employer text (8 of them discovery leads traced to the employer), 95 discovery leads with aggregator text only, 0 empty descriptions.
+- Design decisions found on real data:
+  - De-duplication: same URL always; same title and company only across different sources, because employers such as AJAIA post one title per country and only some of those may be open to Kenya.
+  - Detail fetches are gated: a posting already stored or already seen this run is skipped before any request, so Pavago's 60-fetch cap always goes to new postings (about 2,600 listings are covered over a few daily runs).
+  - Resolver company lookups are capped at 15 per run and cached (90 days positive, 30 days negative). Following an ATS apply link is not capped. **Moved to Stage 3:** look up only discovery jobs that survive the free rules, so no requests are spent on jobs that will be skipped anyway.
+- 49 Stage 2 tests (76 in total): politeness (robots allow/deny/5xx, per-host wait, Retry-After, User-Agent), every adapter, URL matching, resolver (apply-link, name collision, cache, cap), de-duplication, dry run writes nothing, a failing source never stops the run, manual intake never fetches unsupported sites.
 
 ### Stage 3: Decision routing `[ ]`
 - **3a Rules (free):**
@@ -233,7 +247,9 @@ README (mermaid architecture, routing versus RAG, setup, sources supported and n
 
 ## Open questions for Carol
 
-None open. Resolved 2026-11-24: cv-builder-qa link support (yes, at Stage 5), Lynn Resumes short versions (approved), titles (below).
+1. **Reddit:** robots.txt on both `oauth.reddit.com` and `www.reddit.com` disallows all user agents, which conflicts with the "respect robots.txt" rule even for the official API. Options: keep Reddit off (current), or record an explicit exception that robots.txt targets crawlers and the authenticated Data API is governed by Reddit's API terms. Reddit may also require approval before a new API app works.
+
+Resolved earlier: Resolved 2026-11-24: cv-builder-qa link support (yes, at Stage 5), Lynn Resumes short versions (approved), titles (below).
 
 Resolved titles: **Two titles not found in any CV:** "Lead Project Coordinator (Customer Success Operations Department)" (CVs say "Team Lead, Project Coordinator (...)") and "Supplier (Customer) Support Coordinator" / "Customer Support Coordinator" (CVs say "Supplier Support Coordinator"). Carol confirmed "Lead Project Coordinator (Customer Success Operations Department)" (without "Team") and set the Assent support role to "Customer Support Coordinator (Supplier Support)" for all drafts.
 
@@ -245,3 +261,4 @@ Resolved titles: **Two titles not found in any CV:** "Lead Project Coordinator (
 - 2026-11-24: Carol's review applied through an overrides file. Stage 1 complete (22 tests).
 - 2026-11-24: Full-time floor US$1,800/month. Lynn Resumes role, AI & automation projects, GitHub contact and drafting rules added (24 tests).
 - 2026-11-24: Short versions, support-role title and framing rules applied. Parser fix: "Earlier roles:" summary lines are no longer filed as bullets of the role above (27 tests). 474/474 CV facts still verbatim in a cited CV.
+- 2026-11-24: Stage 2 sourcing done: 15 sources live, 254 real jobs stored, 76 tests. Reddit off pending Carol's decision.
