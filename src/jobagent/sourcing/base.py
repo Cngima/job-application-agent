@@ -6,6 +6,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 from jobagent.sourcing.config import SourceConfig
 from jobagent.sourcing.http import PoliteClient
@@ -20,6 +21,7 @@ class SourceStats:
     title_filtered: int = 0  # dropped by the title prefilter before any detail fetch
     detail_fetches: int = 0
     known_skipped: int = 0  # already stored or seen this run: no request made
+    too_old: int = 0  # posted more than max_age_days ago
     errors: list[str] = field(default_factory=list)
 
 
@@ -29,6 +31,7 @@ class SourcingContext:
     max_detail_fetches: int = 60  # per source per run, protects large agency boards
     # True if this posting URL is already stored or was seen earlier this run.
     known: Callable[[str], bool] = lambda url: False
+    max_age_days: int | None = 7  # None = no age limit
 
 
 class Source(ABC):
@@ -61,6 +64,16 @@ class Source(ABC):
         if self.ctx.title_ok(title):
             return True
         self.stats.title_filtered += 1
+        return False
+
+    def is_fresh(self, posted_at: datetime | None) -> bool:
+        """False (and counted) if the posting is older than the age limit. Undated postings
+        pass here; the pipeline flags them `date_unknown`."""
+        if posted_at is None or self.ctx.max_age_days is None:
+            return True
+        if datetime.now(UTC) - posted_at <= timedelta(days=self.ctx.max_age_days):
+            return True
+        self.stats.too_old += 1
         return False
 
     def _detail_gate(self, url: str) -> str:

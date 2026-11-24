@@ -34,6 +34,7 @@ class SourceReport:
     status: str = "ok"  # ok | error | skipped | disabled
     listed: int = 0
     title_filtered: int = 0
+    too_old: int = 0
     duplicates: int = 0
     new: int = 0
     resolved: int = 0
@@ -61,6 +62,7 @@ def run_sourcing(
     resolve: bool = True,
     max_detail_fetches: int = 60,
     max_new_companies: int = 15,
+    max_age_days: int | None = 7,
 ) -> list[SourceReport]:
     resolver = Resolver(conn, client, max_new_companies=max_new_companies)
     seen_urls: set[str] = set()
@@ -82,6 +84,7 @@ def run_sourcing(
         title_ok=profile.title_prefilter.passes,
         max_detail_fetches=max_detail_fetches,
         known=known_url,
+        max_age_days=max_age_days,
     )
 
     def cross_source_dupe(job: Job) -> bool:
@@ -101,6 +104,12 @@ def run_sourcing(
         adapter = build_adapter(cfg, client, ctx)
         try:
             for job in adapter.fetch():
+                # Age limit for every source (adapters with dated lists check earlier, before
+                # any detail request). Undated postings are kept but flagged.
+                if not adapter.is_fresh(job.posted_at):
+                    continue
+                if job.posted_at is None and "date_unknown" not in job.flags:
+                    job = job.model_copy(update={"flags": [*job.flags, "date_unknown"]})
                 if job.canonical_url in seen_urls or cross_source_dupe(job) or is_known(conn, job):
                     rep.duplicates += 1
                     continue
@@ -132,6 +141,7 @@ def run_sourcing(
             rep.status, rep.error = "error", f"{type(e).__name__}: {e}"
         st: SourceStats = adapter.stats
         rep.duplicates += st.known_skipped
+        rep.too_old = st.too_old
         rep.listed, rep.title_filtered = st.listed, st.title_filtered
         rep.requests = client.requests_made - before
         rep.notes += st.errors

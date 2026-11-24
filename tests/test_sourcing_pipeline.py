@@ -341,3 +341,94 @@ def test_resolved_lead_is_not_resolved_again_next_run(conn, make_client) -> None
     (rep2,) = run_sourcing(conn, src, PROFILE, client)
     assert (rep2.new, rep2.resolved, rep2.duplicates) == (0, 0, 1)
     assert router.paths()[before:] == ["remoteok.com/api"]
+
+
+# ---------- age limit (jobs must not be older than a week)
+
+
+def _iso(days_ago: float) -> str:
+    from datetime import UTC, datetime, timedelta
+
+    return (datetime.now(UTC) - timedelta(days=days_ago)).isoformat()
+
+
+def test_jobs_older_than_the_limit_are_not_stored(conn, make_client) -> None:
+    jobs = [
+        gh_job(1, "Automation Project Manager"),
+        gh_job(2, "Project Coordinator"),
+        gh_job(3, "Automation Lead"),
+    ]
+    jobs[0]["first_published"] = _iso(2)
+    jobs[1]["first_published"] = _iso(10)
+    jobs[2].pop("first_published", None)  # undated
+    client, _ = make_client({"boards-api.greenhouse.io/v1/boards/acme/jobs": {"jobs": jobs}})
+    src = _sources(
+        SourceConfig(name="Acme", adapter="greenhouse", slug="acme", kind="employer_ats")
+    )
+    (rep,) = run_sourcing(conn, src, PROFILE, client, max_age_days=7)
+    assert (rep.new, rep.too_old) == (2, 1)
+    flags = dict(conn.execute("SELECT external_id, flags FROM jobs").fetchall())
+    assert flags == {"1": "[]", "3": '["date_unknown"]'}
+    assert conn.execute("SELECT too_old FROM sourcing_runs").fetchone()[0] == 1
+
+
+def test_stale_postings_cost_no_detail_request(conn, make_client) -> None:
+    listing = {
+        "name": "Ag",
+        "jobs": [
+            {
+                "title": "Automation Specialist",
+                "shortcode": "OLD111",
+                "published_on": _iso(30)[:10],
+            },
+            {"title": "Project Coordinator", "shortcode": "NEW222", "published_on": _iso(1)},
+        ],
+    }
+    client, router = make_client(
+        {
+            "apply.workable.com/api/v1/widget/accounts/ag": listing,
+            "apply.workable.com/api/v1/accounts/ag/jobs/NEW222": {
+                "shortcode": "NEW222",
+                "title": "Project Coordinator",
+                "published": _iso(1),
+            },
+        }
+    )
+    src = _sources(SourceConfig(name="Ag", adapter="workable", slug="ag", kind="agency"))
+    (rep,) = run_sourcing(conn, src, PROFILE, client, max_age_days=7)
+    assert (rep.new, rep.too_old) == (1, 1)
+    assert not any("OLD111" in p for p in router.paths())
+
+
+def test_no_age_limit_when_disabled(conn, make_client) -> None:
+    j = gh_job(1, "Automation Project Manager")
+    j["first_published"] = _iso(400)
+    client, _ = make_client({"boards-api.greenhouse.io/v1/boards/acme/jobs": {"jobs": [j]}})
+    src = _sources(
+        SourceConfig(name="Acme", adapter="greenhouse", slug="acme", kind="employer_ats")
+    )
+    (rep,) = run_sourcing(conn, src, PROFILE, client, max_age_days=None)
+    assert rep.new == 1
+
+
+def test_prune_old_jobs_keeps_recent_and_undated(conn) -> None:
+    from datetime import datetime
+
+    from jobagent.sourcing.store import prune_old_jobs
+
+    for i, days in enumerate([1, 9, None]):
+        insert_job(
+            conn,
+            Job(
+                source="s",
+                source_kind="employer_ats",
+                title=f"T{i}",
+                company="C",
+                url=f"https://x/{i}",
+                posted_at=None if days is None else datetime.fromisoformat(_iso(days)),
+            ),
+        )
+    assert prune_old_jobs(conn, 7, dry_run=True) == 1
+    assert conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 3
+    assert prune_old_jobs(conn, 7) == 1
+    assert sorted(r[0] for r in conn.execute("SELECT title FROM jobs")) == ["T0", "T2"]

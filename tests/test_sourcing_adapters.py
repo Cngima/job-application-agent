@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
+from email.utils import format_datetime
 
 import pytest
 
@@ -333,7 +335,7 @@ def test_myjobmag_rss_latin1_and_job_page(make_client) -> None:
         '<?xml version="1.0" encoding="iso-8859-1"?><rss><channel>'
         "<item><title><![CDATA[Project Analyst at Caf\xe9 Ltd]]></title>"
         "<link><![CDATA[https://www.myjobmag.co.ke/jobs/project-analyst]]></link>"
-        "<pubDate>Tue, 24 Nov 2026 15:51:05 GMT</pubDate></item>"
+        f"<pubDate>{format_datetime(datetime.now(UTC))}</pubDate></item>"
         "<item><title><![CDATA[Jobs at Bundle Co]]></title><link>https://x</link></item>"
         "</channel></rss>"
     ).encode("latin-1")

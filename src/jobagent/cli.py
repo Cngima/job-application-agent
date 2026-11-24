@@ -116,28 +116,31 @@ def source(
     c = cfg()
     conn = connect(c.db_path)
     client = _client()
+    profile = load_search_profile(search_profile)
     try:
         reports = run_sourcing(
             conn,
             load_sources(sources_file),
-            load_search_profile(search_profile),
+            profile,
             client,
             only=only or None,
             dry_run=dry_run,
             resolve=not no_resolve,
             max_detail_fetches=c.sourcing.max_detail_fetches_per_source,
             max_new_companies=c.sourcing.max_new_companies_per_run,
+            max_age_days=profile.max_age_days,
         )
     finally:
         client.close()
     head = (
-        f"{'source':24} {'status':9} {'listed':>6} {'title-':>6} {'dupes':>5} "
+        f"{'source':24} {'status':9} {'listed':>6} {'title-':>6} {'old':>4} {'dupes':>5} "
         f"{'new':>4} {'resolv':>6} {'reqs':>4}"
     )
     typer.echo(("DRY RUN: nothing written\n" if dry_run else "") + head + "\n" + "-" * len(head))
+    typer.echo(f"(title- = dropped by title, old = posted over {profile.max_age_days} days ago)")
     for r in reports:
         typer.echo(
-            f"{r.name[:24]:24} {r.status:9} {r.listed:>6} {r.title_filtered:>6} "
+            f"{r.name[:24]:24} {r.status:9} {r.listed:>6} {r.title_filtered:>6} {r.too_old:>4} "
             f"{r.duplicates:>5} {r.new:>4} {r.resolved:>6} {r.requests:>4}"
         )
     for r in reports:
@@ -183,3 +186,36 @@ def add(
         client.close()
     state = "Added" if inserted else "Already tracked"
     typer.echo(f"{state}: {job.title} @ {job.company} (id {job.id}, text: {job.text_origin})")
+
+
+@app.command()
+def prune(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Count only, delete nothing"),
+    search_profile: Path = typer.Option(Path("config/search_profile.yaml")),
+) -> None:
+    """Remove stored jobs older than max_age_days (search profile). Backs up the DB first."""
+    import shutil
+    from datetime import datetime
+
+    from jobagent.db import connect
+    from jobagent.sourcing.config import load_search_profile
+    from jobagent.sourcing.store import prune_old_jobs
+
+    days = load_search_profile(search_profile).max_age_days
+    if days is None:
+        typer.echo("No age limit set (max_age_days is empty); nothing to prune.")
+        return
+    c = cfg()
+    conn = connect(c.db_path)
+    n = prune_old_jobs(conn, days, dry_run=True)
+    if dry_run or not n:
+        typer.echo(f"{n} stored jobs are older than {days} days" + (" (dry run)." if n else "."))
+        return
+    backup = c.data_dir / "backups" / f"jobagent-{datetime.now():%Y%m%d-%H%M%S}.db"
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    conn.close()
+    shutil.copy2(c.db_path, backup)
+    conn = connect(c.db_path)
+    prune_old_jobs(conn, days)
+    left = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+    typer.echo(f"Removed {n} jobs older than {days} days; {left} remain. Backup: {backup}")

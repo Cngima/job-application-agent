@@ -162,6 +162,9 @@ class MyJobMagSource(Source):
                 continue  # "Jobs at X" bundles several roles; not a single posting
             if not self._keep(title):
                 continue
+            pub = item.findtext("pubDate")
+            if not self.is_fresh(parsedate_to_datetime(pub) if pub else None):
+                continue
             link = (item.findtext("link") or "").strip()
             gate = self._detail_gate(link)
             if gate == "skip":
@@ -170,7 +173,6 @@ class MyJobMagSource(Source):
                 break
             page = self._get_text(link)
             body = div_by_class(page, "job-details") or div_by_class(page, "job-description")
-            pub = item.findtext("pubDate")
             yield Job(
                 source=self.cfg.name,
                 source_kind=self.cfg.kind,

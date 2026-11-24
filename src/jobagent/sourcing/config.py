@@ -99,6 +99,7 @@ class SearchProfile(BaseModel):
     titles: list[str] = Field(default_factory=list)
     priority_keywords: list[str] = Field(default_factory=list)
     title_prefilter: TitlePrefilter
+    max_age_days: int | None = 7  # drop postings older than this (None = no limit)
     model_config = {"extra": "allow"}
 
 

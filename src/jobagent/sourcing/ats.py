@@ -247,6 +247,8 @@ class WorkableSource(ATSSource):
         for j in data.get("jobs", []):
             if not self._keep(j["title"]):
                 continue
+            if not self.is_fresh(_ts(j.get("published_on"))):
+                continue
             gate = self._detail_gate(
                 f"https://apply.workable.com/{self.cfg.slug}/j/{j['shortcode']}/"
             )
@@ -282,6 +284,8 @@ class BreezySource(ATSSource):
     def fetch(self) -> Iterator[Job]:
         for p in self._get_json(self.LIST.format(slug=self.cfg.slug)):
             if not self._keep(p["name"]):
+                continue
+            if not self.is_fresh(_ts(p.get("published_date"))):
                 continue
             gate = self._detail_gate(p["url"])
             if gate == "skip":

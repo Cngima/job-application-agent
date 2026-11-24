@@ -94,14 +94,15 @@ def record_source_run(
     upsert_source(conn, cfg)
     conn.execute(
         "INSERT INTO sourcing_runs (started_at, finished_at, source, listed, title_filtered, "
-        "duplicates, new_jobs, resolved, requests, status, error) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "too_old, duplicates, new_jobs, resolved, requests, status, error) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             started_at,
             now_iso(),
             cfg.name,
             stats.listed,
             stats.title_filtered,
+            stats.too_old,
             duplicates,
             new_jobs,
             resolved,
@@ -145,3 +146,18 @@ def set_ats_lookup(
         "checked_at = excluded.checked_at",
         (company_key, ats, slug, now_iso()),
     )
+
+
+def prune_old_jobs(conn: sqlite3.Connection, max_age_days: int, dry_run: bool = False) -> int:
+    """Delete stored jobs posted more than `max_age_days` ago. Undated jobs are kept.
+
+    Only the jobs table exists at this stage; once later stages add decisions or applications,
+    jobs referenced there must never be pruned.
+    """
+    cutoff = (datetime.now(UTC) - timedelta(days=max_age_days)).isoformat()
+    where = "posted_at IS NOT NULL AND posted_at < ?"
+    n = conn.execute(f"SELECT COUNT(*) FROM jobs WHERE {where}", (cutoff,)).fetchone()[0]
+    if not dry_run and n:
+        conn.execute(f"DELETE FROM jobs WHERE {where}", (cutoff,))
+        conn.commit()
+    return n

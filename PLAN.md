@@ -43,6 +43,7 @@ Status key: `[ ]` not started, `[~]` in progress, `[x]` done and verified on rea
 - **Exclude:** pure software engineering, data science or ML engineering, sales/SDR/BDR quota roles, call centre or customer support, roles requiring a licence Carol does not hold.
 - **Hours:** full-time or part-time. US working hours acceptable but always shown in the digest. Part-time and flexible roles get a small score bonus.
 - **Pay floors:** US$1,300/month part-time, US$1,800/month full-time.
+- **Job age:** postings older than 7 days are never stored (`max_age_days: 7`). Undated postings are kept and flagged `date_unknown`.
 - **Hourly conversion:** use the posting's stated hours when given, otherwise 80 hours/month part-time and 160 full-time. A converted figure is an estimate, so anything up to 10% below the floor routes to REVIEW, not SKIP.
 
 ## Environment findings (2026-11-24)
@@ -123,6 +124,7 @@ Shared `Source` interface `fetch() -> list[Job]`. Every Job records `source`, `s
 - **Kenyan boards** (BrighterMonday, MyJobMag, Fuzu): included only if each offers a public RSS feed or API and its robots.txt and terms allow automated access. Checked in Stage 2. Otherwise listed in the README as not supported.
 - **hiring.cafe:** no automated access. README explains the manual workflow: discover companies there, then add their ATS boards to `sources.yaml`.
 - **Manual intake:** `jobagent add` accepts a URL or pasted text. If the URL is a supported ATS page it is fetched through the polite client. Otherwise the pasted text is used as is. Same routing, fit scoring and tracking, with `source = manual`.
+- **Age limit (Carol, 2026-11-24): jobs must not be older than a week.** `max_age_days: 7` in `search_profile.yaml`. Checked before any detail request where the board's list carries a date (Workable, Breezy, MyJobMag), and again for every job before storing. Greenhouse uses `first_published`, not `updated_at`. Undated postings are kept and flagged `date_unknown`. `jobagent prune` removes stored jobs past the limit and backs up the database first.
 - Normalise to one `Job` model, de-duplicate by canonical URL and by normalised `title + company`, skip anything already stored.
 - `PoliteClient`: robots.txt cache, per-host rate limit, identifying User-Agent, retry with backoff.
 - Seed `sources.yaml` from the Job Hunt Log. Companies with no permitted feed (for example Safaricom on Oracle, Talent Hackers on ApplyToJob) are listed as `manual_watch` with a note.
@@ -148,7 +150,7 @@ Shared `Source` interface `fetch() -> list[Job]`. Every Job records `source`, `s
   - Location exclusion parser over the employer's own text only ("US only", "EMEA excluding Africa", "LATAM only" and similar). Skip on clear exclusion of Kenya.
   - Pay floor from `search_profile.yaml`: stated hours first, else 80 or 160 hours/month. Below floor by more than 10%: SKIP. Within 10% below: REVIEW. Range: compared on its top figure.
   - Out-of-scope functions and seniority (exclusion list in `search_profile.yaml`).
-  - Postings older than 60 days flagged as likely evergreen.
+  - (Replaced: the 60-day evergreen flag is no longer needed because postings older than 7 days are dropped at sourcing.)
   - Source caps: Reddit at most REVIEW. Discovery sources with no employer text at most CHECK_ELIGIBILITY.
 - **3b AI** for jobs that pass: batched (default 5 per call), returns per job `route`, `eligibility_verdict` (KENYA_CONFIRMED / AFRICA_OR_WORLDWIDE_NO_EXCLUSION / UNCLEAR / EXCLUDED), `quoted_location_text`, `function_match`, `seniority_match`, `hours_requirement` (including whether US hours are required), `reasons`. Pydantic-validated, one retry, then REVIEW.
 - `quoted_location_text` must be a literal substring of the employer's text. If it is not, the verdict drops to UNCLEAR.
@@ -262,3 +264,4 @@ Resolved titles: **Two titles not found in any CV:** "Lead Project Coordinator (
 - 2026-11-24: Full-time floor US$1,800/month. Lynn Resumes role, AI & automation projects, GitHub contact and drafting rules added (24 tests).
 - 2026-11-24: Short versions, support-role title and framing rules applied. Parser fix: "Earlier roles:" summary lines are no longer filed as bullets of the role above (27 tests). 474/474 CV facts still verbatim in a cited CV.
 - 2026-11-24: Stage 2 sourcing done: 15 sources live, 254 real jobs stored, 76 tests. Reddit off pending Carol's decision.
+- 2026-11-24: 7-day age limit added (Carol). Pruned 140 stale jobs (backup kept), re-ran: 124 jobs stored, oldest 6 days, run time down from 5m14s to 1m23s because stale postings cost no detail requests; Pavago's 2,616 listings now covered in one run. 80 tests.
