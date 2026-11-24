@@ -180,7 +180,14 @@ Draft rules from Carol (`config/drafting.yaml`):
 - Overlap check: a draft is rejected if a role bullet and a project line share 8 or more consecutive words.
 - The job-application-agent project entry is added only after this repo is built, tested and pushed, describing only working stages.
 
-**Dependency found in cv-builder-qa (checked 2026-11-24):** its only hyperlink is the LinkedIn link in the contact line (hard-coded). There is no GitHub contact link and `diamond` items have no link field, so project links would be plain text. Clickable links need a small change in cv-builder-qa itself (a generic link field on contacts and diamond items). Decision needed from Carol before Stage 5.
+- Lynn Resumes short versions (approved 2026-11-24): when `proj-lynn-agents` or `proj-metrics-dashboard` is in the CV, the matching role bullet uses its `short_text` with no date shown. Otherwise the full bullet is used.
+- Assent 2017-10 role: always titled "Customer Support Coordinator (Supplier Support)", framed as customer support for the platform's supplier users (phone, email, live chat, Zendesk; CSAT and QA scores), led by fact `assent-dd917a`. The words "procurement" and "supplier management" are banned for this role; the validator rejects a draft that uses them there.
+
+**First step of Stage 5: link support in cv-builder-qa (approved by Carol 2026-11-24).** Its only hyperlink today is the hard-coded LinkedIn link in the contact line. In github.com/Cngima/cv-builder-qa:
+1. Add a generic link field (text + URL) for contact-line items and for `diamond` items.
+2. Keep the existing `linkedin` field working unchanged.
+3. Tests for both link types and for LinkedIn backwards compatibility; update the README and JSON Schema.
+4. Push as a normal commit to that repo, then use it here for the GitHub contact link and project links.
 
 - `jobagent draft <job_id>` only for jobs Carol approves.
 - Install `cv-builder-qa` from GitHub, read its JSON Schema, build `cv_spec.json` by selecting and ordering real facts (text from the evidence bank, no new claims).
@@ -226,9 +233,9 @@ README (mermaid architecture, routing versus RAG, setup, sources supported and n
 
 ## Open questions for Carol
 
-1. **cv-builder-qa links:** add generic hyperlink support to cv-builder-qa (separate repo) so GitHub and project links are clickable?
-2. **Overlap between Lynn Resumes bullets and project lines:** approve short role versions used when the matching project is in the same draft?
-3. **Two titles not found in any CV:** "Lead Project Coordinator (Customer Success Operations Department)" (CVs say "Team Lead, Project Coordinator (...)") and "Supplier (Customer) Support Coordinator" / "Customer Support Coordinator" (CVs say "Supplier Support Coordinator"). Confirm both are intended.
+None open. Resolved 2026-11-24: cv-builder-qa link support (yes, at Stage 5), Lynn Resumes short versions (approved), titles (below).
+
+Resolved titles: **Two titles not found in any CV:** "Lead Project Coordinator (Customer Success Operations Department)" (CVs say "Team Lead, Project Coordinator (...)") and "Supplier (Customer) Support Coordinator" / "Customer Support Coordinator" (CVs say "Supplier Support Coordinator"). Carol confirmed "Lead Project Coordinator (Customer Success Operations Department)" (without "Team") and set the Assent support role to "Customer Support Coordinator (Supplier Support)" for all drafts.
 
 ## Progress log
 
@@ -237,3 +244,4 @@ README (mermaid architecture, routing versus RAG, setup, sources supported and n
 - 2026-11-24: Stage 1 evidence bank builder done and tested (20 tests). Real bank built from 39 CVs, awaiting Carol's review.
 - 2026-11-24: Carol's review applied through an overrides file. Stage 1 complete (22 tests).
 - 2026-11-24: Full-time floor US$1,800/month. Lynn Resumes role, AI & automation projects, GitHub contact and drafting rules added (24 tests).
+- 2026-11-24: Short versions, support-role title and framing rules applied. Parser fix: "Earlier roles:" summary lines are no longer filed as bullets of the role above (27 tests). 474/474 CV facts still verbatim in a cited CV.

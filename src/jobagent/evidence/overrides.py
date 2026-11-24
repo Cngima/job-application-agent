@@ -36,6 +36,9 @@ class RoleOverride(BaseModel):
     end: str | None = None
     allowed_titles: list[str] = Field(default_factory=list)  # approved alternates
     employer_variants: list[str] | None = None
+    constraints: list[str] | None = None
+    banned_terms: list[str] | None = None
+    preferred_facts: list[str] | None = None
 
 
 class NewRole(BaseModel):
@@ -87,6 +90,9 @@ def apply_overrides(bank: EvidenceBank, ov: Overrides) -> tuple[EvidenceBank, li
         ]
         if o.employer_variants is not None:
             role.employer_variants = o.employer_variants
+        for attr in ("constraints", "banned_terms", "preferred_facts"):
+            if getattr(o, attr) is not None:
+                setattr(role, attr, getattr(o, attr))
         for f in bank.facts:
             if f.start == role.key and f.kind == "experience":
                 f.role, f.employer, f.end = role.title, role.employer, role.end

@@ -372,6 +372,27 @@ def build_bank(
             )
         )
 
+    # "Earlier roles: A (dates), and B (dates): did X" summaries span several old roles, so
+    # they are kept as unattributed experience facts rather than bullets of any one role.
+    earlier_clusters: list[_Cluster] = []
+    for cv in cvs:
+        for text in cv.earlier_roles:
+            _cluster_into(earlier_clusters, text, cv.source)
+    for cl in earlier_clusters:
+        text = strip_em_dashes(cl.text)
+        facts.append(
+            Fact(
+                id=_short_id("earlier", cl.norm),
+                kind="experience",
+                text=text,
+                heading="Earlier roles",
+                tools=tools_in(text, skill_tools),
+                metrics=metrics_in(text),
+                sources=sorted(cl.sources),
+                source_count=len(cl.sources),
+            )
+        )
+
     prof_clusters: list[_Cluster] = []
     for cv in cvs:
         for s in cv.profile:

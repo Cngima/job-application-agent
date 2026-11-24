@@ -92,6 +92,7 @@ class ParsedCV:
     roles: list[ParsedRole] = field(default_factory=list)
     achievements: list[tuple[str, str | None, str]] = field(default_factory=list)
     projects: list[tuple[str, str]] = field(default_factory=list)
+    earlier_roles: list[str] = field(default_factory=list)  # "Earlier roles: ... : did X" lines
     credentials: list[tuple[str, str]] = field(default_factory=list)
 
 
@@ -226,9 +227,16 @@ def parse_cv(lines: list[str], source: str) -> ParsedCV:
                 current_role = role
                 awaiting_employer = role.employer is None
                 continue
+            text = strip_bullet(line)
+            if re.match(r"Earlier roles?:", text, re.I):
+                # A summary of older roles, not a bullet of the role above it. Keep it only
+                # when it describes work ("...(dates): did X"), not when it just lists roles.
+                if re.search(r"\):\s*\S", text):
+                    cv.earlier_roles.append(text)
+                current_role = None
+                continue
             if current_role is None:
                 continue
-            text = strip_bullet(line)
             if text.lower().rstrip(":").strip() in LABEL_LINES or (
                 text.endswith(":") and len(text) < 40
             ):

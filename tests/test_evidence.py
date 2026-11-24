@@ -351,3 +351,65 @@ def test_duplicate_ids_across_projects_and_facts_rejected(tmp_path: Path) -> Non
     )
     with pytest.raises(ValidationError):
         apply_overrides(bank, ov)
+
+
+def test_earlier_roles_summary_is_not_a_bullet_of_the_role_above() -> None:
+    lines = [
+        "AMINA WEKESA",
+        "PROFESSIONAL EXPERIENCE",
+        "Operations Coordinator  |  Sunbird Health Clinics  •  Kisumu, Kenya\tJan 2020 – Feb 2023",
+        "Trained 20 front-desk staff.",
+        "Earlier role: Receptionist, Lake Hotel, Kisumu, Kenya (May 2016 – Oct 2017).",
+        "Earlier roles: Receptionist, Lake Hotel (2016 – 2017): ran the front desk and bookings.",
+    ]
+    cv = parse_cv(lines, "a.docx")
+    assert cv.roles[0].bullets == ["Trained 20 front-desk staff."]
+    assert cv.earlier_roles == [lines[-1]]  # the bare listing is dropped, the summary kept
+
+
+def _bank_with(tmp_path: Path, **ov):
+    from jobagent.evidence.overrides import Overrides, apply_overrides
+
+    bank, _ = build_bank([_make_cv(tmp_path / "a.docx", ["Built Zapier workflows."])])
+    return apply_overrides(bank, Overrides.model_validate(ov))
+
+
+def test_short_text_must_point_at_a_real_project(tmp_path: Path) -> None:
+    from pydantic import ValidationError
+
+    fact = {
+        "id": "f1",
+        "kind": "experience",
+        "text": "Long version.",
+        "short_text": "Short.",
+        "short_when_project": "p1",
+    }
+    project = {"id": "p1", "name": "P", "link": "https://x", "description": "d"}
+    out, _ = _bank_with(tmp_path, facts_add=[fact], ai_automation_projects=[project])
+    assert out.fact("f1").short_when_project == "p1"
+    with pytest.raises(ValidationError, match="unknown project"):
+        _bank_with(tmp_path, facts_add=[fact])
+
+
+def test_role_banned_terms_and_preferred_facts(tmp_path: Path) -> None:
+    from pydantic import ValidationError
+
+    bank, _ = build_bank([_make_cv(tmp_path / "a.docx", ["Built Zapier workflows."])])
+    fid = next(f.id for f in bank.facts if f.kind == "experience")
+    out, _ = _bank_with(
+        tmp_path,
+        roles={
+            "2023-03": {
+                "title": "Support Coordinator",
+                "banned_terms": ["procurement"],
+                "preferred_facts": [fid],
+            }
+        },
+    )
+    assert out.roles[0].preferred_facts == [fid]
+    with pytest.raises(ValidationError, match="banned"):
+        _bank_with(
+            tmp_path, roles={"2023-03": {"banned_terms": ["Zapier"], "preferred_facts": [fid]}}
+        )
+    with pytest.raises(ValidationError, match="unknown preferred"):
+        _bank_with(tmp_path, roles={"2023-03": {"preferred_facts": ["nope"]}})

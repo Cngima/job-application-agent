@@ -27,6 +27,10 @@ class Fact(BaseModel):
     # When this specific fact happened, if narrower than the role dates. Drafts must keep it,
     # e.g. AI work at a business that started years earlier.
     date: str | None = None
+    # Owner-approved shorter wording, used instead of `text` when the CV also includes the
+    # AI & AUTOMATION PROJECTS entry `short_when_project`, so the two never repeat each other.
+    short_text: str | None = None
+    short_when_project: str | None = None
     tools: list[str] = Field(default_factory=list)
     metrics: list[str] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
@@ -53,6 +57,8 @@ class Role(BaseModel):
     tools: list[str] = Field(default_factory=list)  # tools used in this role, when stated
     # Rules every draft must follow for this role, e.g. "Mark as part-time".
     constraints: list[str] = Field(default_factory=list)
+    banned_terms: list[str] = Field(default_factory=list)  # words drafts must not use here
+    preferred_facts: list[str] = Field(default_factory=list)  # fact ids to lead with
     source_count: int = 0
 
 
@@ -133,6 +139,22 @@ class EvidenceBank(BaseModel):
         dupes = {i for i in ids if ids.count(i) > 1}
         if dupes:
             raise ValueError(f"duplicate ids in evidence bank: {sorted(dupes)}")
+        project_ids = {p.id for p in self.ai_automation_projects}
+        fact_ids = {f.id for f in self.facts}
+        for f in self.facts:
+            if (f.short_text is None) != (f.short_when_project is None):
+                raise ValueError(f"{f.id}: short_text and short_when_project go together")
+            if f.short_when_project and f.short_when_project not in project_ids:
+                raise ValueError(f"{f.id}: unknown project {f.short_when_project!r}")
+        for r in self.roles:
+            missing = set(r.preferred_facts) - fact_ids
+            if missing:
+                raise ValueError(f"role {r.key}: unknown preferred facts {sorted(missing)}")
+            for fid in r.preferred_facts:
+                text = next(f.text for f in self.facts if f.id == fid)
+                hit = [t for t in r.banned_terms if t.lower() in text.lower()]
+                if hit:
+                    raise ValueError(f"role {r.key}: preferred fact {fid} uses banned {hit}")
         return self
 
     def fact(self, fact_id: str) -> Fact | None:
