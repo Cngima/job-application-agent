@@ -33,6 +33,23 @@ class SourcingConfig(BaseModel):
     max_new_companies_per_run: int = 15
 
 
+class GmailConfig(BaseModel):
+    enabled: bool = False
+    client_secret: Path = Path("data/private/gmail_client_secret.json")
+    token: Path = Path("data/private/gmail_token.json")
+    lookback_days: int = 7
+    max_messages_per_run: int = 50
+    linkedin_senders: list[str] = Field(
+        default_factory=lambda: ["jobalerts-noreply@linkedin.com", "jobs-noreply@linkedin.com"]
+    )
+
+
+class IntakeConfig(BaseModel):
+    inbox_dir: Path = Path("inbox")
+    follow_links_per_post: int = 2
+    gmail: GmailConfig = Field(default_factory=GmailConfig)
+
+
 class HttpConfig(BaseModel):
     user_agent: str
     min_seconds_between_requests: float = 2.0
@@ -46,6 +63,7 @@ class Config(BaseModel):
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
     fit: FitConfig = Field(default_factory=FitConfig)
     sourcing: SourcingConfig = Field(default_factory=SourcingConfig)
+    intake: IntakeConfig = Field(default_factory=IntakeConfig)
     http: HttpConfig
 
     def with_profile(self, profile: str | None) -> Config:

@@ -249,11 +249,41 @@ def test_manual_add_fetches_supported_ats_url(conn, make_client) -> None:
     )
 
 
-def test_manual_add_never_fetches_unsupported_sites(conn, make_client) -> None:
+def test_manual_add_never_opens_linkedin_or_whatsapp_links(conn, make_client) -> None:
     client, router = make_client({})
-    with pytest.raises(ManualIntakeError, match="not a supported ATS"):
-        add_manual(conn, client, url="https://www.linkedin.com/jobs/view/1")
+    for url in (
+        "https://www.linkedin.com/jobs/view/1",
+        "https://wa.me/254700000000",
+        "https://lnkd.in/abc",
+        "https://uk.indeed.com/viewjob?jk=1",
+    ):
+        with pytest.raises(ManualIntakeError, match="never opens LinkedIn"):
+            add_manual(conn, client, url=url)
     assert router.calls == []
+
+
+def test_manual_add_follows_other_links_where_robots_allows(conn, make_client) -> None:
+    import httpx
+
+    page = (
+        '<html><head><title>Ops Lead</title><script type="application/ld+json">'
+        '{"@type":"JobPosting","title":"Automation Lead","hiringOrganization":{"name":"Acme",'
+        '"sameAs":"https://acme.co.ke"},"jobLocationType":"TELECOMMUTE",'
+        '"applicantLocationRequirements":{"@type":"Country","name":"Kenya"},'
+        '"description":"<p>Remote across Kenya.</p>"}</script></head></html>'
+    )
+    client, _ = make_client(
+        {
+            "careers.acme.co.ke/jobs/1": httpx.Response(200, html=page),
+            "blocked.example/robots.txt": "User-agent: *\nDisallow: /\n",
+        }
+    )
+    job, inserted = add_manual(conn, client, url="https://careers.acme.co.ke/jobs/1")
+    assert inserted and (job.title, job.company) == ("Automation Lead", "Acme")
+    assert job.text_origin == "employer"  # hiring organisation's own domain
+    assert "TELECOMMUTE" in job.location_text and "Kenya" in job.location_text
+    with pytest.raises(ManualIntakeError, match="robots.txt"):
+        add_manual(conn, client, url="https://blocked.example/job/9")
 
 
 def test_manual_add_pasted_text_is_not_employer_text_unless_declared(conn, make_client) -> None:
@@ -271,8 +301,31 @@ def test_manual_add_pasted_text_is_not_employer_text_unless_declared(conn, make_
         conn, client, text="Remote, Africa", title="Ops Lead", company="Co2", employer_text=True
     )
     assert job2.text_origin == "employer" and job2.url.startswith("manual://")
-    with pytest.raises(ManualIntakeError, match="--title and --company"):
-        add_manual(conn, client, text="x")
+    job3, _ = add_manual(
+        conn,
+        client,
+        text="Position: Automation Specialist\nCompany: Lakeside Ltd\n"
+        "Location: Remote (Kenya)\nApply by 30 Nov",
+    )
+    assert (job3.title, job3.company, job3.aggregator_location) == (
+        "Automation Specialist",
+        "Lakeside Ltd",
+        "Remote (Kenya)",
+    )
+
+
+def test_manual_add_pasted_scam_is_flagged(conn, make_client) -> None:
+    client, _ = make_client({})
+    job, _ = add_manual(
+        conn,
+        client,
+        text=(
+            "Safaricom is hiring Data Entry Clerks. Registration fee KES 500 via M-Pesa till number "
+            "123456. Send your ID copy to safaricomjobs@gmail.com"
+        ),
+    )
+    assert job.flags == ["scam_risk"]
+    assert len(job.risk_reasons) >= 3
 
 
 def test_names_match_rejects_containment_collisions() -> None:

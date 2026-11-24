@@ -1,6 +1,7 @@
 # Secrets and private data: never committed
 .env
 data/private/
+inbox/
 *.db
 *.sqlite
 

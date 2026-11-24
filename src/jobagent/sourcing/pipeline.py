@@ -183,13 +183,21 @@ def add_manual(
     company: str | None = None,
     employer_text: bool = False,
 ) -> tuple[Job, bool]:
-    """Add a job Carol found anywhere (X, WhatsApp, LinkedIn, hiring.cafe...).
+    """Add one job Carol found anywhere (X, WhatsApp, LinkedIn, hiring.cafe...).
 
-    Supported ATS URLs are fetched through the polite client and count as employer text.
-    Anything else is never fetched: the pasted text is used as is, and it only counts as
-    employer text when Carol says it was copied from the employer's own posting.
+    - Supported ATS URLs are read through their official APIs (employer text).
+    - Other URLs are followed where robots.txt allows (LinkedIn, Indeed, WhatsApp, Telegram
+      and social sites never are); the page counts as the employer's only on an ATS or the
+      hiring organisation's own domain.
+    - Pasted text is used as is. Title and company are read from it when not given. It only
+      counts as employer text when Carol says it was copied from the employer's own posting.
+    - Pasted text gets the scam checks; a flagged job can never be routed to APPLY.
     Returns (job, inserted).
     """
+    from jobagent.intake.pages import fetch_advert, never_fetch
+    from jobagent.intake.scam import scam_reasons
+    from jobagent.intake.whatsapp import parse_post
+
     job: Job | None = None
     if url and (hit := match_ats_url(url)):
         cls, slug, ref = hit
@@ -198,8 +206,9 @@ def add_manual(
             raise ManualIntakeError(f"could not read that {cls.ats} posting")
         job = job.model_copy(update={"source": "manual", "company": company or job.company})
     elif text:
-        if not (title and company):
-            raise ManualIntakeError("pasted text needs --title and --company")
+        parsed = parse_post(text)
+        title = title or parsed.title
+        company = company or parsed.company or "Unknown employer"
         ref = url or f"manual://{hashlib.sha1(text.encode()).hexdigest()[:12]}"
         job = Job(
             source="manual",
@@ -207,15 +216,44 @@ def add_manual(
             title=title,
             company=company,
             url=ref,
-            employer_url=url if employer_text else None,
+            employer_url=url if (employer_text and url) else None,
             description=text,
             text_origin="employer" if employer_text else "pasted",
+            aggregator_location=parsed.location,
+        )
+        reasons = scam_reasons(text, company)
+        if reasons:
+            job = job.model_copy(update={"flags": ["scam_risk"], "risk_reasons": reasons})
+    elif url and never_fetch(url):
+        raise ManualIntakeError(
+            "The agent never opens LinkedIn, Indeed, WhatsApp, Telegram or social media links. "
+            'Paste the posting text instead (jobagent add "<text>" or --text-file).'
         )
     elif url:
-        raise ManualIntakeError(
-            "That site is not a supported ATS, so the agent will not fetch it. "
-            "Paste the posting text with --text-file (plus --title and --company)."
-        )
+        advert = fetch_advert(client, url, kind="manual")
+        if advert is None:
+            raise ManualIntakeError(
+                "Could not read that page (robots.txt disallows it, or it failed). "
+                "Paste the posting text with --text-file."
+            )
+        if advert.job is not None:
+            job = advert.job.model_copy(
+                update={"source": "manual", "company": company or advert.job.company}
+            )
+        else:
+            job = Job(
+                source="manual",
+                source_kind="manual",
+                title=title or advert.title or "Untitled posting",
+                company=company or advert.company or "Unknown employer",
+                url=advert.url,
+                employer_url=advert.url if advert.is_employer else None,
+                description=advert.description,
+                text_origin="employer" if advert.is_employer else "aggregator",
+                location_text=advert.location if advert.is_employer else None,
+                aggregator_location=None if advert.is_employer else advert.location,
+                posted_at=advert.posted_at,
+            )
     else:
         raise ManualIntakeError("give a URL, pasted text, or both")
     if is_known(conn, job):

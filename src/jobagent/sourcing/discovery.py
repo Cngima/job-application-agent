@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from email.utils import parsedate_to_datetime
 
+from jobagent.intake.scam import scam_reasons
 from jobagent.sourcing.ats import _ts
 from jobagent.sourcing.base import Source
 from jobagent.sourcing.models import Job
@@ -241,6 +242,9 @@ class RedditSource(Source):
                 if not self._keep(title):
                     continue
                 text = post.get("selftext", "")
+                reasons = scam_reasons(f"{raw}\n{text}")
+                if SCAM_PATTERNS.search(f"{raw}\n{text}") and not reasons:
+                    reasons = ["moves the conversation to Telegram, WhatsApp or crypto payment"]
                 url = f"https://www.reddit.com{post.get('permalink', '')}"
                 yield Job(
                     source=self.cfg.name,
@@ -253,7 +257,8 @@ class RedditSource(Source):
                     text_origin="community",
                     aggregator_location=f"r/{sub}",
                     posted_at=_ts(post.get("created_utc")),
-                    flags=["scam_risk"] if SCAM_PATTERNS.search(f"{raw}\n{text}") else [],
+                    flags=["scam_risk"] if reasons else [],
+                    risk_reasons=reasons,
                 )
 
 

@@ -28,6 +28,20 @@ sourcing:
   max_detail_fetches_per_source: 60   # caps per-job requests on big boards
   max_new_companies_per_run: 15       # resolver board lookups for unseen companies
 
+intake:
+  inbox_dir: inbox                 # WhatsApp text files; processed ones move to inbox/processed
+  follow_links_per_post: 2         # apply links followed per WhatsApp/manual post
+  gmail:
+    enabled: false                 # set true after `jobagent gmail auth`
+    client_secret: data/private/gmail_client_secret.json
+    token: data/private/gmail_token.json
+    lookback_days: 7
+    max_messages_per_run: 50
+    linkedin_senders:              # LinkedIn job alert senders
+      - jobalerts-noreply@linkedin.com
+      - jobs-noreply@linkedin.com
+      - jobs-listings@linkedin.com
+
 http:
   user_agent: "job-application-agent/0.1 (+https://github.com/Cngima/job-application-agent)"
   min_seconds_between_requests: 2.0

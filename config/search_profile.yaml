@@ -41,6 +41,10 @@ pay:
   hours_per_month_full_time: 160
   review_band_pct: 10               # converted pay up to 10% below floor -> REVIEW, not SKIP
 
+# Where Carol can work (used by Stage 3 routing). Remote roles are always in scope.
+kenya_onsite_ok: false                    # skip fully on-site roles unless set to true
+kenya_hybrid_cities: [Nairobi, Nakuru]   # hybrid roles only in these cities
+
 # Postings older than this are dropped at sourcing (before any detail request where the
 # board's list gives a date). Undated postings are kept and flagged date_unknown.
 max_age_days: 7

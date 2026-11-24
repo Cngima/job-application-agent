@@ -39,6 +39,7 @@ JOB_COLUMNS = [
     "tags",
     "flags",
     "attribution",
+    "risk_reasons",
 ]
 
 
@@ -64,6 +65,7 @@ def insert_job(conn: sqlite3.Connection, job: Job) -> None:
     d["first_seen_at"] = now_iso()
     d["tags"] = json.dumps(job.tags)
     d["flags"] = json.dumps(job.flags)
+    d["risk_reasons"] = json.dumps(job.risk_reasons)
     d["remote"] = None if job.remote is None else int(job.remote)
     conn.execute(
         f"INSERT INTO jobs ({', '.join(JOB_COLUMNS)}) VALUES ({', '.join('?' * len(JOB_COLUMNS))})",

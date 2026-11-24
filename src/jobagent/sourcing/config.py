@@ -100,6 +100,8 @@ class SearchProfile(BaseModel):
     priority_keywords: list[str] = Field(default_factory=list)
     title_prefilter: TitlePrefilter
     max_age_days: int | None = 7  # drop postings older than this (None = no limit)
+    kenya_onsite_ok: bool = False
+    kenya_hybrid_cities: list[str] = Field(default_factory=lambda: ["Nairobi", "Nakuru"])
     model_config = {"extra": "allow"}
 
 

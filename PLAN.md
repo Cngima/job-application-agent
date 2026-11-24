@@ -145,7 +145,23 @@ Shared `Source` interface `fetch() -> list[Job]`. Every Job records `source`, `s
   - Resolver company lookups are capped at 15 per run and cached (90 days positive, 30 days negative). Following an ATS apply link is not capped. **Moved to Stage 3:** look up only discovery jobs that survive the free rules, so no requests are spent on jobs that will be skipped anyway.
 - 49 Stage 2 tests (76 in total): politeness (robots allow/deny/5xx, per-host wait, Retry-After, User-Agent), every adapter, URL matching, resolver (apply-link, name collision, cache, cap), de-duplication, dry run writes nothing, a failing source never stops the run, manual intake never fetches unsupported sites.
 
+### Intake: WhatsApp inbox, manual jobs, LinkedIn alerts, scam checks `[x]`
+Added 2026-11-24 at Carol's request.
+- **WhatsApp (no WhatsApp access of any kind):** Carol saves copied or exported channel posts as `.txt` in `inbox/` (gitignored; desktop shortcut via `scripts/create_inbox_shortcut.ps1`). `jobagent inbox` splits files into posts (chat-export timestamps, dash separators or blank lines), drops chatter, de-duplicates (by content and by link), follows up to 2 apply links per post, runs scam checks and stores jobs with source `whatsapp`. Processed files move to `inbox/processed/`; identical content is never processed twice. `jobagent add --batch <file>` does the same immediately.
+- **Following links:** GET only. Redirects followed by hand so `robots.txt` is checked on every hop. LinkedIn, Indeed, WhatsApp, Telegram and social media are never opened. Supported ATS links use their APIs. Other pages: schema.org JobPosting if present; text counts as the employer's only on an ATS or the hiring organisation's own domain.
+- **`jobagent add <url or text>`:** pasted text is parsed for title, company and location when not given, and gets scam checks.
+- **LinkedIn job alert emails:** Gmail with `gmail.readonly` only (`jobagent gmail auth`, then `jobagent gmail alerts`). Parses the plain-text part of the email; never fetches linkedin.com. Each lead is traced to the company's own Greenhouse, Lever, Ashby or Workable board; if found, the real advert is stored and the board is appended to `config/sources.yaml` (comments preserved, file validated, restored on error). If not, the job is stored as a `linkedin_lead` with the clean LinkedIn link. Leads skipped because of the lookup cap are flagged `lookup_pending` and retried next run. Processed messages are remembered in `gmail_messages`.
+- **Scam checks** (WhatsApp, manual, Reddit): fee or M-Pesa payment, only a personal phone or WhatsApp number, free email address for a named company, unrealistic pay, ID or bank documents up front. Reasons stored in `risk_reasons`.
+- **Real-data check:** Carol's 22 Nov LinkedIn alert (6 jobs): 1 off-target title dropped, Thunes traced to its Greenhouse posting and its board added to `sources.yaml`, 4 kept as LinkedIn leads (no public board), 0 requests to linkedin.com.
+- **Not yet verified live:** the Gmail API path itself, because it needs Carol's one-time Google OAuth setup (README, "Gmail setup"). It is tested with a fake Gmail client.
+- 37 intake tests (117 in total).
+
 ### Stage 3: Decision routing `[ ]`
+Additional rules from Carol (2026-11-24), to build in this stage:
+- **Location** (`search_profile.yaml`): remote roles always in scope; hybrid only in `kenya_hybrid_cities` (Nairobi, Nakuru); fully on-site roles skipped while `kenya_onsite_ok: false`.
+- **Scam-flagged jobs** route to REVIEW with their reasons, never APPLY.
+- **`linkedin_lead` jobs** route to **LINKEDIN_LEAD** (a fifth route, no AI call) and are listed in the daily digest with the LinkedIn link.
+- **WhatsApp, pasted and Reddit text** can never prove eligibility on its own: at most REVIEW or CHECK_ELIGIBILITY unless the employer's own advert was found.
 - **3a Rules (free):**
   - Location exclusion parser over the employer's own text only ("US only", "EMEA excluding Africa", "LATAM only" and similar). Skip on clear exclusion of Kenya.
   - Pay floor from `search_profile.yaml`: stated hours first, else 80 or 160 hours/month. Below floor by more than 10%: SKIP. Within 10% below: REVIEW. Range: compared on its top figure.
@@ -264,4 +280,5 @@ Resolved titles: **Two titles not found in any CV:** "Lead Project Coordinator (
 - 2026-11-24: Full-time floor US$1,800/month. Lynn Resumes role, AI & automation projects, GitHub contact and drafting rules added (24 tests).
 - 2026-11-24: Short versions, support-role title and framing rules applied. Parser fix: "Earlier roles:" summary lines are no longer filed as bullets of the role above (27 tests). 474/474 CV facts still verbatim in a cited CV.
 - 2026-11-24: Stage 2 sourcing done: 15 sources live, 254 real jobs stored, 76 tests. Reddit off pending Carol's decision.
+- 2026-11-24: Intake added: WhatsApp inbox and batches, `add <url or text>`, LinkedIn alert emails via read-only Gmail, scam checks, location settings in the search profile. Desktop shortcut created. README started (describes built features only). 117 tests.
 - 2026-11-24: 7-day age limit added (Carol). Pruned 140 stale jobs (backup kept), re-ran: 124 jobs stored, oldest 6 days, run time down from 5m14s to 1m23s because stale postings cost no detail requests; Pavago's 2,616 listings now covered in one run. 80 tests.

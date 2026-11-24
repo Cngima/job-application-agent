@@ -66,6 +66,9 @@ sources:
     params:
       subreddits: [forhire, RemoteJobs, hiring, WorkOnline]
 
+  # ---------------- added automatically (found from LinkedIn job alerts)
+  - {name: "Thunes", adapter: greenhouse, slug: "thunes", kind: employer_ats, notes: "Added 2026-11-24 from a LinkedIn alert lead."}
+
 # Companies and agencies from the Job Hunt Log with no public board the agent may read.
 # Check these by hand, or add them above if they move to a supported ATS.
 manual_watch:

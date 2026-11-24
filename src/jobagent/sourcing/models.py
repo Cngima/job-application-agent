@@ -39,7 +39,8 @@ class Job(BaseModel):
     posted_at: datetime | None = None
     fetched_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     tags: list[str] = Field(default_factory=list)
-    flags: list[str] = Field(default_factory=list)  # e.g. scam_risk, evergreen
+    flags: list[str] = Field(default_factory=list)  # e.g. scam_risk, linkedin_lead
+    risk_reasons: list[str] = Field(default_factory=list)  # plain-English scam warnings
     attribution: str | None = None  # credit required by the source's terms
 
     @computed_field  # type: ignore[prop-decorator]

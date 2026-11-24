@@ -72,6 +72,8 @@ class Resolver:
         self.client = client
         self.max_new_companies = max_new_companies
         self.new_lookups = 0
+        self.last_outcome = ""
+        self.last_board: tuple[str, str] | None = None
         self._boards: dict[tuple[str, str], list[dict] | None] = {}
 
     # ---- board listings (cached for this run)
@@ -126,10 +128,12 @@ class Resolver:
         key = norm_company(company)
         cached = get_ats_lookup(self.conn, key)
         if cached is None:
+            self.last_outcome = "no_board"
             return None
         if cached:
             return cached
         if self.new_lookups >= self.max_new_companies:
+            self.last_outcome = "capped"  # not looked up this run: try again next run
             return None
         self.new_lookups += 1
         for slug in slug_candidates(company, hint):
@@ -143,13 +147,19 @@ class Resolver:
                     set_ats_lookup(self.conn, key, ats, slug)
                     return ats, slug
         set_ats_lookup(self.conn, key, None, None)
+        self.last_outcome = "no_board"
         return None
 
     # ---- public API
 
     def resolve(self, job: Job, slug_hint: str | None = None) -> Job | None:
-        """Return the job enriched with the employer's posting, or None if not found."""
+        """Return the job enriched with the employer's posting, or None if not found.
+
+        Afterwards `last_outcome` says why: found | no_board | no_match | capped | error, and
+        `last_board` holds (ats, slug) when the company's board was identified.
+        """
         employer: Job | None = None
+        self.last_outcome, self.last_board = "no_match", None
         try:
             hit = match_ats_url(job.apply_url or "") or match_ats_url(job.url)
             if hit:
@@ -158,6 +168,7 @@ class Resolver:
             else:
                 board = self._find_board(job.company, job.title, slug_hint)
                 if board:
+                    self.last_board = board
                     ats, slug = board
                     match = next(
                         (
@@ -179,12 +190,15 @@ class Resolver:
                         )
         except (RobotsDisallowed, HostUnavailable) as e:
             log.info("resolver blocked for %s: %s", job.title, e)
+            self.last_outcome = "error"
             return None
         except Exception as e:  # a resolver failure must never fail the run
             log.warning("resolver error for %s @ %s: %s", job.title, job.company, e)
+            self.last_outcome = "error"
             return None
         if not employer or not employer.description:
             return None
+        self.last_outcome = "found"
         return job.model_copy(
             update={
                 "employer_url": employer.employer_url,

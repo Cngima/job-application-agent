@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import typer
@@ -30,6 +31,9 @@ def main(
     ),
     config: Path = typer.Option(Path("config.yaml"), help="Path to config.yaml"),
 ) -> None:
+    for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     setup_logging("DEBUG" if verbose else "INFO")
     load_dotenv()
     _state["config"] = load_config(config).with_profile(profile)
@@ -152,40 +156,229 @@ def source(
             typer.echo(f"\n{r.name}:\n  " + "\n  ".join(r.sample))
 
 
+def _intake_report(r) -> None:
+    typer.echo(
+        f"{r.name}: {r.posts} posts, {r.new} new, {r.duplicates} duplicates, {r.too_old} too old, "
+        f"{r.title_filtered} off-target titles, {r.links_followed} links followed, "
+        f"{r.employer_found} traced to the employer, {r.scam_flagged} scam-flagged"
+        + (f", {r.linkedin_leads} LinkedIn leads to check by hand" if r.linkedin_leads else "")
+    )
+    for b in r.boards_added:
+        typer.echo(f"  added to config/sources.yaml: {b}")
+    for e in r.errors:
+        typer.echo(f"  note: {e}")
+    for s in r.sample:
+        typer.echo(f"  {s}")
+
+
+def _resolver(conn, client):
+    from jobagent.sourcing.resolver import Resolver
+
+    return Resolver(conn, client, max_new_companies=cfg().sourcing.max_new_companies_per_run)
+
+
 @app.command()
 def add(
-    url: str = typer.Argument(None, help="Posting URL (fetched only if it is a supported ATS)"),
-    text_file: Path = typer.Option(None, exists=True, dir_okay=False, help="Pasted posting text"),
-    text: str = typer.Option(None, help="Pasted posting text (short)"),
+    url_or_text: str = typer.Argument(None, help="A posting URL, or the posting text itself"),
+    batch: Path = typer.Option(
+        None, exists=True, dir_okay=False, help="A WhatsApp text file with many posts"
+    ),
+    text_file: Path = typer.Option(None, exists=True, dir_okay=False, help="One pasted posting"),
     title: str = typer.Option(None),
     company: str = typer.Option(None),
     employer_text: bool = typer.Option(
         False, help="The pasted text is copied from the employer's own posting"
     ),
+    search_profile: Path = typer.Option(Path("config/search_profile.yaml")),
 ) -> None:
-    """Add a job found anywhere (X, WhatsApp, LinkedIn, hiring.cafe). Source = manual."""
+    """Add jobs found anywhere: one URL, one pasted post, or a whole WhatsApp batch file."""
     from jobagent.db import connect
+    from jobagent.intake.processor import process_whatsapp_text
+    from jobagent.sourcing.config import load_search_profile
     from jobagent.sourcing.pipeline import ManualIntakeError, add_manual
 
-    body = text_file.read_text(encoding="utf-8") if text_file else text
     conn = connect(cfg().db_path)
     client = _client()
     try:
-        job, inserted = add_manual(
-            conn,
-            client,
-            url=url,
-            text=body,
-            title=title,
-            company=company,
-            employer_text=employer_text,
+        if batch:
+            prof = load_search_profile(search_profile)
+            rep = process_whatsapp_text(
+                conn,
+                client,
+                batch.read_text(encoding="utf-8-sig"),
+                name=batch.name,
+                resolver=_resolver(conn, client),
+                title_ok=prof.title_prefilter.passes,
+                max_age_days=prof.max_age_days,
+                max_links=cfg().intake.follow_links_per_post,
+            )
+            _intake_report(rep)
+            return
+        is_url = bool(url_or_text) and url_or_text.strip().lower().startswith(
+            ("http://", "https://")
         )
-    except ManualIntakeError as e:
-        raise typer.BadParameter(str(e)) from e
+        url = url_or_text.strip() if is_url else None
+        body = (
+            text_file.read_text(encoding="utf-8-sig")
+            if text_file
+            else (None if is_url else url_or_text)
+        )
+        try:
+            job, inserted = add_manual(
+                conn,
+                client,
+                url=url,
+                text=body,
+                title=title,
+                company=company,
+                employer_text=employer_text,
+            )
+        except ManualIntakeError as e:
+            raise typer.BadParameter(str(e)) from e
     finally:
         client.close()
     state = "Added" if inserted else "Already tracked"
     typer.echo(f"{state}: {job.title} @ {job.company} (id {job.id}, text: {job.text_origin})")
+    for reason in job.risk_reasons:
+        typer.echo(f"  SCAM RISK: {reason}")
+
+
+@app.command()
+def inbox(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report only; move and write nothing"),
+    search_profile: Path = typer.Option(Path("config/search_profile.yaml")),
+) -> None:
+    """Process every new .txt file in the WhatsApp inbox folder."""
+    from jobagent.db import connect
+    from jobagent.intake.processor import process_inbox
+    from jobagent.sourcing.config import load_search_profile
+
+    c = cfg()
+    prof = load_search_profile(search_profile)
+    conn = connect(c.db_path)
+    client = _client()
+    try:
+        reports = process_inbox(
+            conn,
+            client,
+            c.intake.inbox_dir,
+            dry_run=dry_run,
+            resolver=_resolver(conn, client),
+            title_ok=prof.title_prefilter.passes,
+            max_age_days=prof.max_age_days,
+            max_links=c.intake.follow_links_per_post,
+        )
+    finally:
+        client.close()
+    if not reports:
+        typer.echo(f"No new .txt files in {c.intake.inbox_dir.resolve()}")
+    for r in reports:
+        _intake_report(r)
+
+
+gmail_app = typer.Typer(help="Read-only Gmail access for LinkedIn job alert emails.")
+app.add_typer(gmail_app, name="gmail")
+
+
+@gmail_app.command("auth")
+def gmail_auth() -> None:
+    """One-time browser consent for gmail.readonly. Stores a token in data/private/."""
+    from jobagent.intake.gmail import GmailNotConfigured, authorise
+
+    g = cfg().intake.gmail
+    try:
+        authorise(g.client_secret, g.token)
+    except GmailNotConfigured as e:
+        raise typer.BadParameter(str(e)) from e
+    typer.echo(f"Read-only Gmail token saved to {g.token}. Set intake.gmail.enabled: true.")
+
+
+@gmail_app.command("alerts")
+def gmail_alerts(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report only; remember nothing"),
+    from_file: Path = typer.Option(
+        None, exists=True, dir_okay=False, help="Parse a saved alert email (plain text) instead"
+    ),
+    sources_file: Path = typer.Option(Path("config/sources.yaml")),
+    search_profile: Path = typer.Option(Path("config/search_profile.yaml")),
+) -> None:
+    """Read new LinkedIn job alert emails and trace each lead to the company's own board."""
+    from jobagent.db import connect, now_iso
+    from jobagent.intake.gmail import GmailNotConfigured, build_service, list_alert_messages
+    from jobagent.intake.linkedin import parse_alert
+    from jobagent.intake.processor import (
+        IntakeReport,
+        process_linkedin_leads,
+        retry_pending_leads,
+    )
+    from jobagent.sourcing.config import load_search_profile
+
+    c = cfg()
+    prof = load_search_profile(search_profile)
+    conn = connect(c.db_path)
+    client = _client()
+    resolver = _resolver(conn, client)
+    rep = IntakeReport("linkedin_alert")
+    kw = dict(
+        sources_path=sources_file,
+        title_ok=prof.title_prefilter.passes,
+        max_age_days=prof.max_age_days,
+        dry_run=dry_run,
+        rep=rep,
+    )
+    try:
+        if not dry_run:
+            retry_pending_leads(conn, resolver, sources_file, rep)
+        if from_file:
+            process_linkedin_leads(
+                conn, resolver, parse_alert(from_file.read_text(encoding="utf-8")), **kw
+            )
+        else:
+            if not c.intake.gmail.enabled:
+                raise typer.BadParameter(
+                    "Gmail is off: run `jobagent gmail auth`, then set "
+                    "intake.gmail.enabled: true in config.yaml"
+                )
+            try:
+                service = build_service(c.intake.gmail.token)
+            except GmailNotConfigured as e:
+                raise typer.BadParameter(str(e)) from e
+            g = c.intake.gmail
+            for msg in list_alert_messages(
+                service, g.linkedin_senders, g.lookback_days, g.max_messages_per_run
+            ):
+                if conn.execute(
+                    "SELECT 1 FROM gmail_messages WHERE message_id = ?", (msg.id,)
+                ).fetchone():
+                    continue
+                leads = parse_alert(msg.text, msg.received_at)
+                process_linkedin_leads(conn, resolver, leads, **kw)
+                if not dry_run:
+                    conn.execute(
+                        "INSERT INTO gmail_messages "
+                        "(message_id, received_at, sender, processed_at, leads) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (msg.id, msg.received_at.isoformat(), msg.sender, now_iso(), len(leads)),
+                    )
+                    conn.commit()
+    finally:
+        client.close()
+    _intake_report(rep)
+
+
+@app.command()
+def intake(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
+    """Daily intake: the WhatsApp inbox, then LinkedIn alerts (if Gmail is set up)."""
+    inbox(dry_run=dry_run, search_profile=Path("config/search_profile.yaml"))
+    if cfg().intake.gmail.enabled:
+        gmail_alerts(
+            dry_run=dry_run,
+            from_file=None,
+            sources_file=Path("config/sources.yaml"),
+            search_profile=Path("config/search_profile.yaml"),
+        )
+    else:
+        typer.echo("LinkedIn alerts: Gmail not set up (see README, 'Gmail setup').")
 
 
 @app.command()
