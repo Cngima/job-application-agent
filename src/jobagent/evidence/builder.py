@@ -27,6 +27,7 @@ from jobagent.evidence.models import (
     Role,
     TitleVariant,
 )
+from jobagent.evidence.overrides import Overrides, apply_overrides
 from jobagent.evidence.parser import ParsedCV, parse_cv
 
 log = logging.getLogger(__name__)
@@ -260,7 +261,9 @@ def _contact(cvs: list[ParsedCV]) -> Contact:
     )
 
 
-def build_bank(cv_paths: list[Path]) -> tuple[EvidenceBank, str]:
+def build_bank(
+    cv_paths: list[Path], overrides: Overrides | None = None
+) -> tuple[EvidenceBank, str]:
     """Return the evidence bank and a Markdown review report."""
     cvs = [parse_cv(read_lines(p), p.name) for p in cv_paths]
     log.info("parsed %d CVs", len(cvs))
@@ -435,7 +438,12 @@ def build_bank(cv_paths: list[Path]) -> tuple[EvidenceBank, str]:
         allowed_tools=allowed_tools,
         never_claim=DEFAULT_NEVER_CLAIM,
     )
-    report = review_report(bank, cvs, end_variants)
+    changes: list[str] = []
+    if overrides is not None:
+        bank, changes = apply_overrides(bank, overrides)
+        for key in overrides.roles:
+            end_variants.pop(key, None)  # the owner has fixed these end dates
+    report = review_report(bank, cvs, end_variants, changes)
     return bank, report
 
 
@@ -444,7 +452,10 @@ def never_claim_hits(text: str, never: list[NeverClaim]) -> list[str]:
 
 
 def review_report(
-    bank: EvidenceBank, cvs: list[ParsedCV], end_variants: dict[str, Counter[str]]
+    bank: EvidenceBank,
+    cvs: list[ParsedCV],
+    end_variants: dict[str, Counter[str]],
+    changes: list[str] | None = None,
 ) -> str:
     n = len(cvs)
     out = [
@@ -453,9 +464,13 @@ def review_report(
         f"Built from {n} CVs: {len(bank.facts)} facts, {len(bank.roles)} roles, "
         f"{len(bank.credentials)} credentials, {len(bank.allowed_tools)} allowed tools.",
         "",
-        "Check each section below, then edit `evidence_bank.yaml` directly. "
-        "Delete anything untrue, fix titles and dates, and add never_claim items.",
+        "Record decisions in `evidence_overrides.yaml` (not in the generated bank), then "
+        "rebuild. Delete anything untrue, fix titles and dates, and add never_claim items.",
         "",
+    ]
+    if changes:
+        out += ["## 0. Review decisions applied", ""] + [f"- {c}" for c in changes] + [""]
+    out += [
         "## 1. Roles and title variants",
         "",
         "Tailored CVs sometimes retitle a role. Keep only titles you can defend in a reference "
@@ -464,7 +479,9 @@ def review_report(
     ]
     for r in bank.roles:
         out.append(f"### {r.title} | {r.employer} | {r.start} to {r.end} ({r.source_count} CVs)")
-        if len(r.title_variants) > 1:
+        # Before review: all variants (only worth showing if there is more than one).
+        # After review: the approved alternates, however many.
+        if len(r.title_variants) > 1 or (changes and r.title_variants):
             for tv in r.title_variants:
                 out.append(
                     f"- title `{tv.title}` in {len(tv.sources)} CV(s)"

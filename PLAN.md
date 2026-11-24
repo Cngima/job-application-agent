@@ -78,7 +78,7 @@ Repo layout, `pyproject.toml`, `.gitignore`, `config.yaml`, `.env.example`, logg
 **How to test:** `pip install -e .[dev]`, then `jobagent --help`, `ruff check .`, `pytest`.
 **Result:** 3 tests pass, ruff clean.
 
-### Stage 1: Evidence bank `[~]` (built, awaiting review)
+### Stage 1: Evidence bank `[x]`
 - `jobagent evidence build --cv-dir "<Clients CV>"` parses every `Carol Njogu_CV_*.docx`, splits each into facts (one bullet = one fact), attaches role, employer, dates and source files, extracts tools against a known-tools vocabulary and metrics by regex.
 - The same fact phrased slightly differently across CVs is merged and keeps a list of all source files.
 - Writes `data/private/evidence_bank.yaml`: `facts`, `allowed_tools` (only tools found in the CVs), `credentials`, `never_claim` (seeded: ERP, Codex, ClickUp as deep configuration, CAT tools, DNS, procurement-to-pay, RICE, Kano and similar product frameworks), `preferences` (remote only, part-time OK, timezone UTC+3, based in Kenya). Targeting lives in `search_profile.yaml`, not here.
@@ -87,13 +87,15 @@ Repo layout, `pyproject.toml`, `.gitignore`, `config.yaml`, `.env.example`, logg
 
 **How to test:** run the build, spot-check 10 facts against their source CV, confirm every `allowed_tools` entry appears in a CV. **Carol reviews and corrects the YAML before any later stage uses it.**
 
-**Result (2026-11-24):** code done, awaiting Carol's review of the bank.
+**Result (2026-11-24):** done and reviewed by Carol.
+- Review decisions are stored in `data/private/evidence_overrides.yaml` and applied on every build, so the reviewed bank is reproducible from the CVs and a rebuild never loses the review.
+- After review: 476 facts, 9 roles with approved alternate titles, 9 credentials, 63 tools, 10+ years of experience (20 conflicting profile sentences dropped).
 - 39 CVs parsed into 495 facts (305 experience, 174 profile sentences, 10 project, 6 achievement), 9 roles, 63 allowed tools, 24 credential variants.
 - All 495 facts verified to appear word for word in at least one cited source CV. Zero em dashes in the bank.
 - `data/private/evidence_bank_review.md` lists what needs a human decision: retitled roles, years-of-experience conflicts, rarely-claimed tools, credential variants, and single-CV facts.
 - The build never overwrites a reviewed bank: a rebuild writes `evidence_bank.new.yaml` unless `--force` is given.
 - Tool matching is case-sensitive so "zoom in" or "word" never counts as a tool claim.
-- 17 Stage 1 tests (parser, builder with generated .docx files, never_claim patterns, overwrite protection, sample bank).
+- 19 Stage 1 tests (parser, builder with generated .docx files, never_claim patterns, overwrite protection, sample bank).
 
 ### Stage 2: Sourcing `[ ]`
 Shared `Source` interface `fetch() -> list[Job]`. Every Job records `source`, `source_kind` (`employer_ats`, `discovery`, `agency`, `community`, `manual`) and the URL of the employer's own posting when known.
@@ -215,9 +217,11 @@ README (mermaid architecture, routing versus RAG, setup, sources supported and n
 1. **Full-time pay floor:** the brief left it blank. What is the US$/month floor for full-time roles?
 2. **Lynn Resumes:** mentioned inside CV facts but never listed as a role. Add it as a role (title, dates) or leave it out?
 3. **Location:** the CVs say "Nairobi, Kenya"; the brief says Nakuru. Which should drafts use?
+4. **Two titles not found in any CV:** "Lead Project Coordinator (Customer Success Operations Department)" (CVs say "Team Lead, Project Coordinator (...)") and "Supplier (Customer) Support Coordinator" / "Customer Support Coordinator" (CVs say "Supplier Support Coordinator"). Confirm both are intended.
 
 ## Progress log
 
 - 2026-11-24: Plan written. Environment checked. Stage 0 scaffold done (3 tests pass, ruff clean).
 - 2026-11-24: Plan updated with Carol's answers: noreply commit email, push per stage, evals moved after Stage 3, hourly conversion with 10% REVIEW band, search profile, expanded sources (Himalayas, Jobicy, BreezyHR, Zoho Recruit, Reddit, manual intake), unsupported sources documented. Stage 1 started.
 - 2026-11-24: Stage 1 evidence bank builder done and tested (20 tests). Real bank built from 39 CVs, awaiting Carol's review.
+- 2026-11-24: Carol's review applied through an overrides file. Stage 1 complete (22 tests).

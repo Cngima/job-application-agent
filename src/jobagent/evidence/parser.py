@@ -13,9 +13,17 @@ MONTHS = {
     m: i
     for i, names in enumerate(
         [
-            ("jan", "january"), ("feb", "february"), ("mar", "march"), ("apr", "april"),
-            ("may",), ("jun", "june"), ("jul", "july"), ("aug", "august"),
-            ("sep", "sept", "september"), ("oct", "october"), ("nov", "november"),
+            ("jan", "january"),
+            ("feb", "february"),
+            ("mar", "march"),
+            ("apr", "april"),
+            ("may",),
+            ("jun", "june"),
+            ("jul", "july"),
+            ("aug", "august"),
+            ("sep", "sept", "september"),
+            ("oct", "october"),
+            ("nov", "november"),
             ("dec", "december"),
         ],
         start=1,
@@ -54,8 +62,11 @@ SKILL_LINE = re.compile(
     re.IGNORECASE,
 )
 LABEL_LINES = {
-    "role responsibilities", "key achievements", "duties & responsibilities",
-    "responsibilities", "achievements",
+    "role responsibilities",
+    "key achievements",
+    "duties & responsibilities",
+    "responsibilities",
+    "achievements",
 }
 LOCATION_WORDS = ("kenya", "nairobi", "nakuru", "canada", "ottawa", "united states", "remote")
 BULLET_CHARS = "◆•▪●-* \t"

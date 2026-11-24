@@ -223,3 +223,50 @@ def test_sample_bank_is_valid_and_fictional() -> None:
     for f in bank.facts:
         for tool in f.tools:
             assert tool in bank.tool_names(), f"{f.id} uses {tool} not in allowed_tools"
+
+
+# ---------- review overrides
+
+
+def test_overrides_apply_titles_years_and_credentials(tmp_path: Path) -> None:
+    from jobagent.evidence.overrides import Overrides, RoleOverride, apply_overrides
+
+    a = _make_cv(tmp_path / "a.docx", ["Built Zapier workflows."], title="AI Project Manager")
+    b = _make_cv(tmp_path / "b.docx", ["Built Zapier workflows."], title="Sales Project Manager")
+    bank, _ = build_bank([a, b])
+    ov = Overrides(
+        roles={
+            "2023-03": RoleOverride(
+                title="Automation Project Manager", allowed_titles=["AI Project Manager"]
+            )
+        },
+        years_of_experience="10+",
+        credentials_keep=["Certified Associate in Project Management (CAPM), PMI"],
+        tools_remove=["HubSpot"],
+    )
+    out, changes = apply_overrides(bank, ov)
+
+    (role,) = out.roles
+    assert role.title == "Automation Project Manager"
+    assert [tv.title for tv in role.title_variants] == ["AI Project Manager"]  # Sales rejected
+    assert all(f.role == "Automation Project Manager" for f in out.facts if f.kind == "experience")
+    # "6 years" profile sentence dropped, one owner fact added
+    assert not any("6 years" in f.text for f in out.facts)
+    assert out.fact("owner-years").text == "10+ years of professional experience."
+    assert "HubSpot" not in out.tool_names()
+    assert len(out.credentials) == 1
+    assert changes
+
+
+def test_cli_build_applies_overrides_file(tmp_path: Path) -> None:
+    _make_cv(tmp_path / "cv.docx", ["Did a thing with Airtable."])
+    ov = tmp_path / "ov.yaml"
+    ov.write_text('years_of_experience: "10+"\n', encoding="utf-8")
+    out = tmp_path / "bank.yaml"
+    result = CliRunner().invoke(
+        app,
+        ["evidence", "build", "--cv-dir", str(tmp_path), "--out", str(out), "--overrides", str(ov)],
+    )
+    assert result.exit_code == 0, result.output
+    assert load_bank(out).fact("owner-years") is not None
+    assert "Review decisions applied" in (tmp_path / "bank_review.md").read_text(encoding="utf-8")
