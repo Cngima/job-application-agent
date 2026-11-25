@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -412,3 +413,162 @@ def prune(
     prune_old_jobs(conn, days)
     left = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
     typer.echo(f"Removed {n} jobs older than {days} days; {left} remain. Backup: {backup}")
+
+
+# --------------------------------------------------------------------------- routing (Stage 3)
+
+ai_app = typer.Typer(help="AI provider checks.")
+app.add_typer(ai_app, name="ai")
+
+
+def _runner(conn, provider_name: str | None, max_calls: int | None = None):
+    from jobagent.ai.provider import AIRunner
+    from jobagent.ai.providers import build_provider
+    from jobagent.routing.ai_router import PROMPT_VERSION
+    from jobagent.routing.fake import fake_dispatch
+
+    c = cfg()
+    provider = build_provider(c.ai, provider_name, fake_fallback=fake_dispatch)
+    return AIRunner(provider, conn, max_calls or c.ai.max_calls_per_run, PROMPT_VERSION)
+
+
+@ai_app.command("ping")
+def ai_ping(
+    provider: str = typer.Option(None, help="claude_code | ollama | anthropic_api | fake"),
+) -> None:
+    """One tiny structured call to check the provider works."""
+    from pydantic import BaseModel
+
+    from jobagent.ai.provider import AIError
+    from jobagent.db import connect
+
+    class Pong(BaseModel):
+        verdict: str
+
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["verdict"],
+        "properties": {"verdict": {"type": "string", "enum": ["KENYA", "OTHER"]}},
+    }
+    conn = connect(cfg().db_path)
+    runner = _runner(conn, provider, max_calls=2)
+    try:
+        out, res = runner.call(
+            "ping",
+            "Classify job location text. Reply with JSON only.",
+            "Location: 'Remote, open to candidates in Kenya'",
+            schema,
+            Pong,
+        )
+    except AIError as e:
+        raise typer.BadParameter(f"{runner.provider.name}: {e}") from e
+    typer.echo(
+        f"{res.provider} / {res.model}: {out.verdict} in {res.latency_ms} ms "
+        f"(tokens in {res.input_tokens}, out {res.output_tokens})"
+    )
+
+
+@app.command()
+def route(
+    limit: int = typer.Option(None, help="Route at most this many undecided jobs"),
+    provider: str = typer.Option(None, help="Override config ai.provider"),
+    rules_only: bool = typer.Option(False, help="Free rules only; leave the rest undecided"),
+    no_resolve: bool = typer.Option(False, help="Do not trace discovery jobs to employers"),
+    redo: bool = typer.Option(False, help="Re-route jobs that already have a decision"),
+    job: list[str] = typer.Option(None, "--job", help="Route (or re-route) only these job ids"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Decide and show, store nothing"),
+    search_profile: Path = typer.Option(Path("config/search_profile.yaml")),
+) -> None:
+    """Stage 3: route undecided jobs to APPLY, REVIEW, SKIP, CHECK_ELIGIBILITY or LINKEDIN_LEAD."""
+    from jobagent.db import connect
+    from jobagent.routing.router import route_jobs
+    from jobagent.sourcing.config import load_search_profile
+
+    c = cfg()
+    prof = load_search_profile(search_profile)
+    conn = connect(c.db_path)
+    client = None if no_resolve else _client()
+    try:
+        rep = route_jobs(
+            conn,
+            prof,
+            c.routing,
+            None if rules_only else _runner(None if dry_run else conn, provider),
+            resolver=None if client is None else _resolver(conn, client),
+            batch_size=c.ai.batch_size,
+            limit=limit,
+            redo=redo,
+            dry_run=dry_run,
+            job_ids=job or None,
+        )
+    finally:
+        if client:
+            client.close()
+    typer.echo(
+        ("DRY RUN: nothing stored\n" if dry_run else "")
+        + f"{rep.considered} jobs considered, {len(rep.decisions)} decided, "
+        f"{rep.pending} left for the AI, {rep.resolved} traced to the employer, "
+        f"{rep.ai_calls} AI calls"
+    )
+    typer.echo("Routes: " + ", ".join(f"{k} {v}" for k, v in sorted(rep.by_route.items())))
+    typer.echo("Decided by: " + ", ".join(f"{k} {v}" for k, v in sorted(rep.by_stage.items())))
+    if rep.paused:
+        typer.echo(f"AI paused: {rep.paused}. Undecided jobs will be routed next run.")
+    _print_decisions(rep.decisions)
+
+
+def _print_decisions(decisions: list[dict], show_skips: bool = True) -> None:
+    order = {"APPLY": 0, "CHECK_ELIGIBILITY": 1, "REVIEW": 2, "LINKEDIN_LEAD": 3, "SKIP": 4}
+    for d in sorted(decisions, key=lambda d: (order.get(d["route"], 9), -(d.get("priority") or 0))):
+        if d["route"] == "SKIP" and not show_skips:
+            continue
+        typer.echo(
+            f"\n[{d['route']}] {d['title']} @ {d['company']}  (priority {d.get('priority') or 0}, "
+            f"{d['stage']})"
+        )
+        if d.get("eligibility_verdict") or d.get("quoted_location_text"):
+            typer.echo(
+                f"  eligibility: {d.get('eligibility_verdict') or '-'}  quote: "
+                f'"{(d.get("quoted_location_text") or "")[:140]}"'
+            )
+        hr = d.get("hours_requirement")
+        if isinstance(hr, str):
+            hr = json.loads(hr)
+        if hr:
+            us = ", US hours required" if hr.get("us_hours_required") else ""
+            typer.echo(
+                f"  hours: {hr.get('employment')}{us} {hr.get('timezone_note') or ''}".rstrip()
+            )
+        reasons = d["reasons"] if isinstance(d["reasons"], list) else json.loads(d["reasons"])
+        for r in reasons[:4]:
+            typer.echo(f"  - {r}")
+
+
+@app.command()
+def decisions(
+    route_filter: str = typer.Option(None, "--route", help="Only this route"),
+    limit: int = typer.Option(40),
+    show_skips: bool = typer.Option(False, help="Include SKIP decisions"),
+) -> None:
+    """Show the current decision for each job, best first."""
+    from jobagent.db import connect
+
+    conn = connect(cfg().db_path)
+    sql = (
+        "SELECT d.*, j.title, j.company FROM decisions d JOIN jobs j ON j.id = d.job_id "
+        "WHERE d.id = (SELECT MAX(id) FROM decisions WHERE job_id = d.job_id)"
+    )
+    args: list = []
+    if route_filter:
+        sql += " AND d.route = ?"
+        args.append(route_filter.upper())
+    rows = [
+        dict(r) for r in conn.execute(sql + " ORDER BY d.priority DESC LIMIT ?", [*args, limit])
+    ]
+    counts = conn.execute(
+        "SELECT route, COUNT(*) FROM decisions d WHERE d.id = (SELECT MAX(id) FROM decisions "
+        "WHERE job_id = d.job_id) GROUP BY route"
+    ).fetchall()
+    typer.echo("Current routes: " + ", ".join(f"{r} {n}" for r, n in counts))
+    _print_decisions(rows, show_skips=show_skips or bool(route_filter))

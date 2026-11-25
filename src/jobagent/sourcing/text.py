@@ -66,6 +66,7 @@ def html_to_text(raw: str | None) -> str:
         raw = html.unescape(raw)
     ex = _TextExtractor()
     ex.feed(raw)
+    ex.close()  # flush buffered text: without this "Specialist, UK&I" came back empty
     text = "".join(ex.parts).replace("\xa0", " ")
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r" *\n *", "\n", text)

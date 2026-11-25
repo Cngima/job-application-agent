@@ -145,3 +145,11 @@ def test_job_id_is_stable_and_prefers_employer_url() -> None:
             url="https://boards.greenhouse.io/c/jobs/9/",
         ).id
     )
+
+
+def test_html_to_text_keeps_text_with_ampersands_and_no_tags() -> None:
+    assert (
+        html_to_text("Principal AI Security Specialist, UK&I")
+        == "Principal AI Security Specialist, UK&I"
+    )
+    assert html_to_text("Research & Development") == "Research & Development"

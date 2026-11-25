@@ -20,7 +20,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "respx>=0.21", "ruff>=0.6"]
+dev = ["pytest>=8", "respx>=0.21", "ruff>=0.6", "anthropic>=1.0"]
+api = ["anthropic>=1.0"]
 gmail = ["google-api-python-client>=2.100", "google-auth-oauthlib>=1.2", "google-auth>=2.30"]
 
 [project.scripts]

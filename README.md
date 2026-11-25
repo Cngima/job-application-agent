@@ -6,8 +6,8 @@ never emails an employer and never signs in to a job site.** The owner reviews a
 everything.
 
 > **Status:** under active development, built one stage at a time (see [PLAN.md](PLAN.md)).
-> This README only describes what is built and tested today. Routing, fit scoring, drafting,
-> the digest, dashboard, MCP server and n8n workflow are planned, not built.
+> This README only describes what is built and tested today. Fit scoring, drafting, the
+> digest, dashboard, MCP server and n8n workflow are planned, not built.
 
 ## What works today
 
@@ -15,6 +15,7 @@ everything.
 |---|---|---|
 | 1. Evidence bank | Parses CV `.docx` files into one fact per bullet, with source files, tools and metrics. Owner review decisions live in an overrides file, so a rebuild never loses them. | Built, tested |
 | 2. Sourcing | Reads public ATS job boards (Greenhouse, Lever, Ashby, Workable, Breezy, Zoho Recruit) and discovery feeds (RemoteOK, Himalayas, Jobicy, MyJobMag Kenya). Drops postings older than 7 days. Traces aggregator leads back to the employer's own posting. | Built, tested, run on real data |
+| 3. Routing | Sends every job to APPLY, REVIEW, SKIP, CHECK_ELIGIBILITY or LINKEDIN_LEAD. Free rules first (location field, pay floor, title, scam flags), then an AI call for the rest, then policy checks the AI cannot override. Every decision stores its quote and reasons. | Built, tested, run on real data |
 | Intake | WhatsApp inbox folder, `jobagent add` for single jobs or batches, LinkedIn job alert emails (read-only Gmail), scam checks. | Built, tested |
 
 ## Rules the code enforces
@@ -52,6 +53,8 @@ Use `--profile sample` for the fictional demo data and `--profile private` for y
 
 ```powershell
 jobagent --profile private source          # read all job boards and feeds
+jobagent --profile private route           # route new jobs (rules, then AI)
+jobagent --profile private decisions       # best jobs first, with quotes and reasons
 jobagent --profile private intake          # WhatsApp inbox, then LinkedIn alerts (if set up)
 jobagent --profile private prune           # remove stored jobs older than 7 days (backs up first)
 ```
@@ -109,6 +112,42 @@ the LinkedIn link from the email itself, and looks for the same role on the comp
 Greenhouse, Lever, Ashby or Workable board. If found, the real advert is stored and the board
 is added to `config/sources.yaml`. If not, the job is kept as a **LinkedIn lead** with its
 LinkedIn link, for you to check by hand.
+
+## Routing: how a job is decided
+
+1. **Free rules (no AI).** Skip when the employer's own location field or text limits applicants
+   to places without Kenya ("Remote - United States", "must be authorized to work in the US"),
+   when stated pay is clearly below the floor (US$1,300/month part-time, US$1,800 full-time,
+   hourly pay converted with the posting's own hours), or when the title is out of scope.
+   LinkedIn leads go to LINKEDIN_LEAD. Scam-flagged jobs are capped at REVIEW.
+2. **AI, only for what is left**, several jobs per call. The model returns a route, an
+   eligibility verdict (KENYA_CONFIRMED, AFRICA_OR_WORLDWIDE_NO_EXCLUSION, UNCLEAR, EXCLUDED),
+   the exact location wording it relied on, function and seniority fit, workplace, hours (US
+   hours flagged) and reasons. Output is schema-validated, retried once, and on a second failure
+   the job goes to REVIEW.
+3. **Policy checks after the AI.** The quote must appear word for word in the employer's text,
+   or the verdict drops to UNCLEAR. Aggregator, WhatsApp and pasted text can never prove
+   eligibility. On-site roles and hybrid roles outside Nairobi and Nakuru are skipped. A
+   location field that contradicts the description caps the job at CHECK_ELIGIBILITY.
+
+### AI providers
+
+Set `ai.provider` in `config.yaml`:
+
+| Provider | Needs | Cost |
+|---|---|---|
+| `claude_code` (default) | Claude Code CLI logged in with your Claude subscription | Counts against your plan's usage limits; no per-call charge |
+| `ollama` | [Ollama](https://ollama.com) running locally, `ollama pull qwen2.5:7b` | Free |
+| `anthropic_api` | `pip install -e ".[api]"`, `ANTHROPIC_API_KEY` in `.env` | Paid per token (claude-opus-5-5: US$4 / US$20 per million input / output tokens); cost logged per call |
+| `fake` | nothing | Free; keyword logic for CI and the demo, not a model |
+
+Every call is logged in the `ai_calls` table (provider, model, latency, tokens). AI calls are
+capped per run (`ai.max_calls_per_run`, default 60). If Claude reports a usage limit, the run
+stops AI work, keeps the rule results, and the remaining jobs are routed next run.
+`jobagent ai ping` checks the provider with one tiny call.
+
+On real data (120 jobs) the rules settled 41 jobs for free; Claude routed the other 81 in 17
+calls of about 13k input and 3k output tokens each.
 
 ## Sources
 

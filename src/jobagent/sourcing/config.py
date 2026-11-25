@@ -101,6 +101,19 @@ class SearchProfile(BaseModel):
     title_prefilter: TitlePrefilter
     max_age_days: int | None = 7  # drop postings older than this (None = no limit)
     kenya_onsite_ok: bool = False
+    exclude_title_terms: list[str] = Field(default_factory=list)
+    seniority_exclude: list[str] = Field(default_factory=list)
+    exclude_functions: list[str] = Field(default_factory=list)
+    pay: dict = Field(
+        default_factory=lambda: {
+            "floor_usd_month_part_time": 1300,
+            "floor_usd_month_full_time": 1800,
+            "hours_per_month_part_time": 80,
+            "hours_per_month_full_time": 160,
+            "review_band_pct": 10,
+        }
+    )
+    hours: dict = Field(default_factory=dict)
     kenya_hybrid_cities: list[str] = Field(default_factory=lambda: ["Nairobi", "Nakuru"])
     model_config = {"extra": "allow"}
 

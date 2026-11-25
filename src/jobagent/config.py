@@ -19,7 +19,8 @@ class AIConfig(BaseModel):
 
 
 class RoutingConfig(BaseModel):
-    evergreen_days: int = 60
+    max_desc_chars: int = 6000
+    fx_to_usd: dict[str, float] = Field(default_factory=lambda: {"USD": 1.0, "KES": 0.0077})
 
 
 class FitConfig(BaseModel):

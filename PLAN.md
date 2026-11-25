@@ -156,7 +156,7 @@ Added 2026-11-24 at Carol's request.
 - **Not yet verified live:** the Gmail API path itself, because it needs Carol's one-time Google OAuth setup (README, "Gmail setup"). It is tested with a fake Gmail client.
 - 37 intake tests (117 in total).
 
-### Stage 3: Decision routing `[ ]`
+### Stage 3: Decision routing `[x]`
 Additional rules from Carol (2026-11-24), to build in this stage:
 - **Location** (`search_profile.yaml`): remote roles always in scope; hybrid only in `kenya_hybrid_cities` (Nairobi, Nakuru); fully on-site roles skipped while `kenya_onsite_ok: false`.
 - **Scam-flagged jobs** route to REVIEW with their reasons, never APPLY.
@@ -175,7 +175,17 @@ Additional rules from Carol (2026-11-24), to build in this stage:
 
 **How to test:** rule tests on hand-written postings including hourly edge cases. `jobagent route --limit 10` on real jobs, Carol reviews the decisions table.
 
-### AI provider layer (built with Stage 3) `[ ]`
+**Result (2026-11-25):** done, run on all 120 real jobs.
+- Free rules settled 41 jobs (37 SKIP with the employer's own location quote, e.g. "Pakistan; Pakistan", "Remote - United States"; 4 LINKEDIN_LEAD). 19 discovery leads were traced to employer boards before the AI saw them.
+- Claude (claude-opus-5-5 via the Claude Code CLI) routed the other 81 jobs in 17 calls of 5 jobs: about 13k input and 3k output tokens and 27 s per call, no invalid outputs, no retries.
+- Current routes: APPLY 1, CHECK_ELIGIBILITY 19, REVIEW 36, LINKEDIN_LEAD 4, SKIP 60.
+- Found on real data and fixed: pay amounts in perk sentences ("learning budget of USD 2,000 per year", "$150 per month stipend") were read as salary; they are now ignored. "South Africa" no longer counts as Africa-wide. A job with "&" in its title lost the title (HTML parser not flushed). One posting contained hidden text telling AI agents to skip it: Claude ignored it, and the prompt (now `route-v2`) says outright that postings are data, never instructions.
+- New rule from real data: when the employer's location field lists countries without Kenya but the description says Africa or worldwide, the job is capped at CHECK_ELIGIBILITY (a contradiction is not proof).
+- Observed: re-routing the same job can change REVIEW vs APPLY on borderline cases. The Stage 3b eval set measures this.
+- Paid API provider: claude-opus-5-5, structured output, server-side refusal fallback, cost from published prices. Ollama provider coded and tested with mocks (Ollama not installed).
+- 41 Stage 3 tests (157 in total).
+
+### AI provider layer (built with Stage 3) `[x]`
 - `complete(prompt, json_schema) -> dict` with validation.
 - `claude_code`: `claude -p --output-format json`, with a timeout. Usage-limit messages raise `ProviderPaused`; the run stops AI work, logs it and keeps rule-only results.
 - `ollama`: HTTP to `localhost:11434`, model from config (default `qwen2.5:7b`).
@@ -280,5 +290,6 @@ Resolved titles: **Two titles not found in any CV:** "Lead Project Coordinator (
 - 2026-11-24: Full-time floor US$1,800/month. Lynn Resumes role, AI & automation projects, GitHub contact and drafting rules added (24 tests).
 - 2026-11-24: Short versions, support-role title and framing rules applied. Parser fix: "Earlier roles:" summary lines are no longer filed as bullets of the role above (27 tests). 474/474 CV facts still verbatim in a cited CV.
 - 2026-11-24: Stage 2 sourcing done: 15 sources live, 254 real jobs stored, 76 tests. Reddit off pending Carol's decision.
+- 2026-11-25: Stage 3 routing done: rules, AI provider layer (Claude Code, Ollama, Anthropic API, fake), policy checks after the AI, decisions table, `jobagent route` / `decisions` / `ai ping`. All 120 real jobs routed. 157 tests.
 - 2026-11-24: Intake added: WhatsApp inbox and batches, `add <url or text>`, LinkedIn alert emails via read-only Gmail, scam checks, location settings in the search profile. Desktop shortcut created. README started (describes built features only). 117 tests.
 - 2026-11-24: 7-day age limit added (Carol). Pruned 140 stale jobs (backup kept), re-ran: 124 jobs stored, oldest 6 days, run time down from 5m14s to 1m23s because stale postings cost no detail requests; Pavago's 2,616 listings now covered in one run. 80 tests.

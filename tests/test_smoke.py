@@ -18,7 +18,7 @@ def test_version_command() -> None:
 def test_config_loads() -> None:
     cfg = load_config(ROOT / "config.yaml")
     assert cfg.ai.max_calls_per_run == 60
-    assert cfg.routing.evergreen_days == 60
+    assert cfg.routing.fx_to_usd["USD"] == 1.0
 
 
 def test_no_em_dashes_in_docs() -> None:

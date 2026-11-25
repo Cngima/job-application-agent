@@ -13,10 +13,23 @@ ai:
     host: http://localhost:11434
     model: qwen2.5:7b
   anthropic_api:
-    model: claude-sonnet-5-5
+    model: claude-opus-5-5   # paid API only; effort below
+    effort: medium
 
 routing:
-  evergreen_days: 60   # targeting and pay floors live in config/search_profile.yaml
+  # Targeting and pay floors live in config/search_profile.yaml.
+  max_desc_chars: 6000        # description characters sent to the AI per job
+  fx_to_usd:                  # approximate rates for the pay-floor estimate; edit as needed
+    USD: 1.0
+    EUR: 1.08
+    GBP: 1.27
+    KES: 0.0077
+    CAD: 0.73
+    AUD: 0.66
+    INR: 0.012
+    ZAR: 0.055
+    PHP: 0.017
+    NGN: 0.00065
 
 
 fit:

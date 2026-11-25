@@ -29,6 +29,15 @@ exclude_functions:
   - call centre or customer support
   - roles requiring a licence Carol does not hold
 
+# Titles containing these words are skipped by the free rules (whole words, any case).
+exclude_title_terms: [software engineer, engineer, engineers, developer, developers,
+  programmer, data scientist, machine learning, ML engineer, SDR, BDR, account executive,
+  sales representative, sales development, sales executive, business development representative,
+  customer support agent, customer service, call centre, call center, nurse, physician,
+  pharmacist, therapist, attorney, lawyer, accountant, CPA, teacher, tutor, driver]
+seniority_exclude: [intern, internship, graduate, trainee, entry level, entry-level,
+  director, VP, vice president, head of, chief, CEO, COO, CTO, CFO]
+
 hours:
   accept: [full-time, part-time]
   us_hours_ok: true            # shown in the digest when required
