@@ -1,0 +1,57 @@
+# FICTIONAL sample eval set for CI and the public demo.
+s01:
+  route: APPLY
+  eligibility: KENYA_CONFIRMED
+  reason: Kenya named; target role; remote.
+  confirmed: true
+  title: AI Implementation Specialist
+  company: Lakeside Logistics
+s02:
+  route: SKIP
+  eligibility: EXCLUDED
+  reason: Remote within the US only.
+  confirmed: true
+  title: Automation Project Manager
+  company: Riverbank Health
+s03:
+  route: APPLY
+  eligibility: AFRICA_OR_WORLDWIDE_NO_EXCLUSION
+  reason: Anywhere; part-time automation.
+  confirmed: true
+  title: Workflow Automation Specialist
+  company: Quiet Harbour
+s04:
+  route: SKIP
+  eligibility: null
+  reason: Software engineering is out of scope.
+  confirmed: true
+  title: Senior Software Engineer
+  company: Delta Co
+s05:
+  route: CHECK_ELIGIBILITY
+  eligibility: UNCLEAR
+  reason: EMEA does not confirm Kenya.
+  confirmed: true
+  title: Technical Project Manager
+  company: Sunbird Clinics
+s06:
+  route: SKIP
+  eligibility: null
+  reason: Pay US$900/month is below the full-time floor.
+  confirmed: true
+  title: Implementation Coordinator
+  company: Kestrel Labs
+s07:
+  route: REVIEW
+  eligibility: UNCLEAR
+  reason: 'Scam warnings: never APPLY.'
+  confirmed: true
+  title: AI Operations Coordinator
+  company: Unknown employer
+s08:
+  route: LINKEDIN_LEAD
+  eligibility: null
+  reason: LinkedIn lead.
+  confirmed: true
+  title: Implementation Manager
+  company: Granite Ltd

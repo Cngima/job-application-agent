@@ -19,7 +19,7 @@ from jobagent.sourcing.config import SearchProfile, SourceConfig, SourcesFile
 from jobagent.sourcing.discovery import DISCOVERY_ADAPTERS
 from jobagent.sourcing.http import HostUnavailable, PoliteClient, RobotsDisallowed
 from jobagent.sourcing.models import Job
-from jobagent.sourcing.resolver import Resolver, himalayas_slug_hint
+from jobagent.sourcing.resolver import Resolver, himalayas_slug_hint, known_boards_from_sources
 from jobagent.sourcing.store import insert_job, is_known, record_source_run
 from jobagent.sourcing.text import canonical_url
 
@@ -64,7 +64,12 @@ def run_sourcing(
     max_new_companies: int = 15,
     max_age_days: int | None = 7,
 ) -> list[SourceReport]:
-    resolver = Resolver(conn, client, max_new_companies=max_new_companies)
+    resolver = Resolver(
+        conn,
+        client,
+        max_new_companies=max_new_companies,
+        known_boards=known_boards_from_sources(sources),
+    )
     seen_urls: set[str] = set()
     seen_keys: dict[str, str] = {}  # dedupe_key -> source that first produced it this run
     reports: list[SourceReport] = []

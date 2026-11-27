@@ -172,10 +172,16 @@ def _intake_report(r) -> None:
         typer.echo(f"  {s}")
 
 
-def _resolver(conn, client):
-    from jobagent.sourcing.resolver import Resolver
+def _resolver(conn, client, sources_file: Path = Path("config/sources.yaml")):
+    from jobagent.sourcing.config import load_sources
+    from jobagent.sourcing.resolver import Resolver, known_boards_from_sources
 
-    return Resolver(conn, client, max_new_companies=cfg().sourcing.max_new_companies_per_run)
+    return Resolver(
+        conn,
+        client,
+        max_new_companies=cfg().sourcing.max_new_companies_per_run,
+        known_boards=known_boards_from_sources(load_sources(sources_file)),
+    )
 
 
 @app.command()
@@ -572,3 +578,42 @@ def decisions(
     ).fetchall()
     typer.echo("Current routes: " + ", ".join(f"{r} {n}" for r, n in counts))
     _print_decisions(rows, show_skips=show_skips or bool(route_filter))
+
+
+@app.command("eval")
+def eval_cmd(
+    provider: str = typer.Option(None, help="claude_code | ollama | anthropic_api | fake"),
+    repeat: int = typer.Option(1, help="Run the set N times to measure route stability"),
+    include_unconfirmed: bool = typer.Option(
+        False, help="Also score labels the owner has not confirmed yet (marked in the report)"
+    ),
+    search_profile: Path = typer.Option(Path("config/search_profile.yaml")),
+) -> None:
+    """Score routing against the labelled eval set (data/<profile>/evals)."""
+    from jobagent.evals.dataset import load_labels, load_postings
+    from jobagent.evals.runner import report_markdown, run_eval, save_report
+    from jobagent.sourcing.config import load_search_profile
+
+    c = cfg()
+    d = c.data_dir / "evals"
+    labels = load_labels(d / "labels.yaml")
+    confirmed = sum(lab.confirmed for lab in labels.values())
+    if not confirmed and not include_unconfirmed:
+        raise typer.BadParameter(
+            f"none of the {len(labels)} labels in {d / 'labels.yaml'} is confirmed yet; "
+            "confirm them first or pass --include-unconfirmed"
+        )
+    res = run_eval(
+        load_postings(d / "postings.jsonl"),
+        labels,
+        load_search_profile(search_profile),
+        c.routing,
+        lambda conn: _runner(conn, provider),
+        batch_size=c.ai.batch_size,
+        repeats=repeat,
+        include_unconfirmed=include_unconfirmed,
+    )
+    title = f"Routing eval ({c.profile} set)"
+    path = save_report(res, d / "results", title)
+    typer.echo(report_markdown(res, title))
+    typer.echo(f"Report saved: {path}")

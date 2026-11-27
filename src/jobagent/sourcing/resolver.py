@@ -66,9 +66,16 @@ def slug_candidates(company: str, hint: str | None = None) -> list[str]:
 
 class Resolver:
     def __init__(
-        self, conn: sqlite3.Connection, client: PoliteClient, max_new_companies: int = 15
+        self,
+        conn: sqlite3.Connection,
+        client: PoliteClient,
+        max_new_companies: int = 15,
+        known_boards: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         self.conn = conn
+        # Boards already configured in sources.yaml, keyed by normalised company name: checked
+        # first, so "Scale Army" maps to the Ashby board "Scale Army Careers" without guessing.
+        self.known_boards = known_boards or {}
         self.client = client
         self.max_new_companies = max_new_companies
         self.new_lookups = 0
@@ -126,6 +133,8 @@ class Resolver:
 
     def _find_board(self, company: str, title: str, hint: str | None) -> tuple[str, str] | None:
         key = norm_company(company)
+        if key in self.known_boards:
+            return self.known_boards[key]
         cached = get_ats_lookup(self.conn, key)
         if cached is None:
             self.last_outcome = "no_board"
@@ -215,3 +224,13 @@ class Resolver:
 def himalayas_slug_hint(job: Job) -> str | None:
     m = re.search(r"himalayas\.app/companies/([\w-]+)/", job.url)
     return m.group(1) if m else None
+
+
+def known_boards_from_sources(sources) -> dict[str, tuple[str, str]]:
+    """Map each configured ATS board's company name to (ats, slug)."""
+    ats = {"greenhouse", "lever", "ashby", "workable"}  # the boards the resolver can search
+    out: dict[str, tuple[str, str]] = {}
+    for s in sources.sources:
+        if s.adapter in ats and s.slug:
+            out.setdefault(norm_company(s.params.get("company", s.name)), (s.adapter, s.slug))
+    return out

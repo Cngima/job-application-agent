@@ -195,7 +195,7 @@ Additional rules from Carol (2026-11-24), to build in this stage:
 
 **How to test:** mocked tests for each provider including timeout, non-zero exit and usage-limit cases. One real call through `jobagent ai ping`.
 
-### Stage 3b: Labelled eval set (moved here from Stage 11) `[ ]`
+### Stage 3b: Labelled eval set (moved here from Stage 11) `[~]` (labels awaiting Carol)
 - Start from the 34 Job Hunt Log rows. For each, find the employer's own posting and save its text to `data/private/evals/postings/` (live where still open, otherwise Carol pastes it or the row is dropped).
 - Top up to about 40 with postings sourced in Stage 2.
 - Propose a label (route, eligibility verdict, one-line reason, quoted location text) for every posting and **show every proposed label to Carol for confirmation**.
@@ -204,6 +204,14 @@ Additional rules from Carol (2026-11-24), to build in this stage:
 - The public repo ships a small sample eval set of fictional postings so CI can run evals with the fake provider.
 
 **How to test:** CI runs the sample evals on `fake`. Locally run on `claude_code` (and `ollama` once installed), paste scores into README.
+
+**Progress (2026-11-27):**
+- Only 2 of the 34 Job Hunt Log postings are still live on an employer board (AJAIA, Hire Hangar); the log stores no posting text, so the other 32 cannot be labelled unless Carol has the adverts saved.
+- Private set: 40 frozen postings in `data/private/evals/postings.jsonl` (2 from the log plus 38 sourced in Stage 2, chosen to cover every route, every source type and the hard cases: location conflicts, EMEA, aggregator labels, Nairobi with no workplace stated, a prompt-injection posting). Text is frozen so the set stays reproducible after adverts close.
+- Proposed labels in `data/private/evals/labels.yaml`, written from each posting's own text, 3 marked JUDGEMENT CALL. Only labels Carol confirms are scored.
+- `jobagent eval [--provider X] [--repeat N]` runs the full router in a throwaway database and reports routing and eligibility accuracy, a confusion table, every disagreement, AI calls and tokens, and (with `--repeat`) how many jobs change route between runs. Reports saved to `<data>/evals/results/`.
+- Public sample set of 8 fictional postings for CI (`data/sample/evals/`), run with the fake provider.
+- Resolver fix found while building the set: boards already in `sources.yaml` are checked first (Scale Army -> Ashby "Scale Army Careers").
 
 ### Stage 4: Fit scoring with RAG `[ ]`
 - Embed evidence facts with fastembed, store in `fact_embeddings`.
@@ -290,6 +298,7 @@ Resolved titles: **Two titles not found in any CV:** "Lead Project Coordinator (
 - 2026-11-24: Full-time floor US$1,800/month. Lynn Resumes role, AI & automation projects, GitHub contact and drafting rules added (24 tests).
 - 2026-11-24: Short versions, support-role title and framing rules applied. Parser fix: "Earlier roles:" summary lines are no longer filed as bullets of the role above (27 tests). 474/474 CV facts still verbatim in a cited CV.
 - 2026-11-24: Stage 2 sourcing done: 15 sources live, 254 real jobs stored, 76 tests. Reddit off pending Carol's decision.
+- 2026-11-27: Eval runner, 40-posting private set and proposed labels built; waiting for Carol to confirm labels before scoring Claude. 163 tests.
 - 2026-11-25: Stage 3 routing done: rules, AI provider layer (Claude Code, Ollama, Anthropic API, fake), policy checks after the AI, decisions table, `jobagent route` / `decisions` / `ai ping`. All 120 real jobs routed. 157 tests.
 - 2026-11-24: Intake added: WhatsApp inbox and batches, `add <url or text>`, LinkedIn alert emails via read-only Gmail, scam checks, location settings in the search profile. Desktop shortcut created. README started (describes built features only). 117 tests.
 - 2026-11-24: 7-day age limit added (Carol). Pruned 140 stale jobs (backup kept), re-ran: 124 jobs stored, oldest 6 days, run time down from 5m14s to 1m23s because stale postings cost no detail requests; Pavago's 2,616 listings now covered in one run. 80 tests.

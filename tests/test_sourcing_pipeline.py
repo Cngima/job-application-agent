@@ -485,3 +485,39 @@ def test_prune_old_jobs_keeps_recent_and_undated(conn) -> None:
     assert conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 3
     assert prune_old_jobs(conn, 7) == 1
     assert sorted(r[0] for r in conn.execute("SELECT title FROM jobs")) == ["T0", "T2"]
+
+
+def test_resolver_uses_boards_configured_in_sources_yaml(conn, make_client) -> None:
+    from pathlib import Path
+
+    from jobagent.sourcing.config import load_sources
+    from jobagent.sourcing.resolver import known_boards_from_sources
+
+    root = Path(__file__).resolve().parents[1]
+    known = known_boards_from_sources(load_sources(root / "config/sources.yaml"))
+    assert known["scale army"] == ("ashby", "Scale Army Careers")
+    client, router = make_client(
+        {
+            "api.ashbyhq.com/posting-api/job-board/Scale Army Careers": {
+                "jobs": [
+                    {
+                        "id": "a1",
+                        "title": "AI Automation Specialist",
+                        "jobUrl": "https://jobs.ashbyhq.com/x/a1",
+                        "descriptionPlain": "Open to candidates in Africa.",
+                    }
+                ]
+            },
+        }
+    )
+    lead = Job(
+        source="J",
+        source_kind="discovery",
+        title="AI Automation Specialist",
+        company="Scale Army",
+        url="https://jobicy.com/jobs/9",
+        text_origin="aggregator",
+    )
+    out = Resolver(conn, client, known_boards=known).resolve(lead)
+    assert out is not None and out.text_origin == "employer"
+    assert not any("greenhouse" in p for p in router.paths())  # no slug guessing needed
